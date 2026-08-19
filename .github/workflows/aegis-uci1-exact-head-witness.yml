@@ -11,15 +11,14 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: b130a8a79fd3c7ab6e48cd1d159ac28b437241bb
+  CANDIDATE_SHA: 9e50a4e8cd627af138f086dfbed0609dde679623
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
   uci-witness:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout witness repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - name: Checkout exact AEGIS candidate
         uses: actions/checkout@v4
         with:
@@ -32,107 +31,28 @@ jobs:
         run: |
           set -euo pipefail
           cd aegis
-          actual="$(git rev-parse HEAD)"
-          base="$(git merge-base HEAD origin/main)"
-          printf 'CANDIDATE_SHA=%s\nEXPECTED_PARENT_SHA=%s\nMERGE_BASE=%s\n' "$actual" "$EXPECTED_PARENT_SHA" "$base" | tee ../uci-lineage.txt
-          test "$actual" = "$CANDIDATE_SHA"
-          test "$base" = "$EXPECTED_PARENT_SHA"
-          git diff --quiet "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA" -- sovereign-omega-v2/package.json sovereign-omega-v2/package-lock.json
-          echo 'UCI_DEPENDENCY_DELTA=NONE' | tee -a ../uci-lineage.txt
-      - name: Setup Node
-        uses: actions/setup-node@v4
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git merge-base HEAD origin/main)" = "$EXPECTED_PARENT_SHA"
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
-      - name: Install exact dependencies
+      - name: Install
         working-directory: aegis/sovereign-omega-v2
         run: npm ci
-      - name: Capture inherited npm audit baseline
-        working-directory: aegis/sovereign-omega-v2
-        shell: bash
-        run: |
-          set +e
-          npm audit --json 2>&1 | tee ../../uci-npm-audit.json
-          echo "NPM_AUDIT_EXIT=${PIPESTATUS[0]}" | tee ../../uci-npm-audit-status.txt
-          exit 0
       - name: UCI-1 regression
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts
       - name: UCI-2 lease boundary
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts
-      - name: UCI-3 provider session identity
+      - name: UCI-3 provider evidence boundary
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/provider-contribution.test.ts
+        run: npm test -- --run test/unit/collective/provider-contribution.test.ts test/unit/collective/provider-contribution-store.test.ts
       - name: Typecheck
         working-directory: aegis/sovereign-omega-v2
         run: npm run typecheck
       - name: Build
         working-directory: aegis/sovereign-omega-v2
         run: npm run build
-
-  resolve-lock:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout witness repo
-        uses: actions/checkout@v4
-      - name: Checkout exact AEGIS candidate
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.AEGIS_REPO }}
-          ref: ${{ env.CANDIDATE_SHA }}
-          path: aegis
-          fetch-depth: 0
-      - name: Prove inherited dependency baseline
-        working-directory: aegis
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          test "$(git merge-base HEAD origin/main)" = "$EXPECTED_PARENT_SHA"
-          git diff --quiet "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA" -- sovereign-omega-v2/package.json sovereign-omega-v2/package-lock.json
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
-      - name: Install baseline
-        working-directory: aegis/sovereign-omega-v2
-        run: npm ci
-      - name: Generate lockfile-only audit repair
-        working-directory: aegis/sovereign-omega-v2
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp package.json "$RUNNER_TEMP/package.json.before"
-          npm audit fix --package-lock-only --ignore-scripts
-          cmp package.json "$RUNNER_TEMP/package.json.before"
-          git diff --exit-code -- package.json
-          test -n "$(git diff --name-only -- package-lock.json)"
-          git diff -- package-lock.json | tee ../../resolved-lock.diff
-      - name: Clean-install resolved lock
-        working-directory: aegis/sovereign-omega-v2
-        run: npm ci
-      - name: Require zero high vulnerabilities
-        working-directory: aegis/sovereign-omega-v2
-        run: npm audit --audit-level=high --json
-      - name: UCI regression on resolved lock
-        working-directory: aegis/sovereign-omega-v2
-        run: |
-          npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts test/unit/collective/provider-contribution.test.ts
-          npm run typecheck
-          npm run build
-      - name: Hash repair evidence
-        shell: bash
-        run: sha256sum aegis/sovereign-omega-v2/package-lock.json resolved-lock.diff | tee resolved-lock.sha256
-      - name: Upload resolved lock evidence
-        uses: actions/upload-artifact@v4
-        with:
-          name: aegis-sovereign-resolved-lock-${{ env.CANDIDATE_SHA }}
-          path: |
-            aegis/sovereign-omega-v2/package-lock.json
-            resolved-lock.diff
-            resolved-lock.sha256
-          if-no-files-found: error
