@@ -19,7 +19,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CANDIDATE_SHA="cfa2f5764de4a283e4b42b11444ef2ddc0198ec7"
+          CANDIDATE_SHA="e3dc56f3da9156c091bfbc2067d775aa2190ac6d"
           EXPECTED_PARENT_SHA="6bf071d9c757d0f3514904f1efad3e3b14a60a09"
           git clone --filter=blob:none https://github.com/Aegis-Omega/AEGIS-OMEGA.git aegis
           cd aegis
@@ -56,7 +56,6 @@ jobs:
           import json
           from pathlib import Path
           from jsonschema.validators import validator_for
-
           paths = (
               sorted(Path('schemas').glob('*-envelope.v1.schema.json'))
               + sorted(Path('schemas').glob('*-receipt.v1.schema.json'))
@@ -90,6 +89,7 @@ jobs:
           assert s['pr2_complete_verification_unavailable_asserted'] is True, s
           assert s['pr2_atomic_admission_unavailable_asserted'] is True, s
           assert s['pr2_effect_bound_admission_unavailable_asserted'] is True, s
+          assert s.get('valid_effect_receipt_production_unavailable_asserted') is not True, s
           print('AUTOMATON3_75_PASS')
           PY
 
@@ -111,7 +111,7 @@ jobs:
           node scripts/validate-claims.mjs
           (cd sovereign-omega-v2 && node scripts/verify-hashes.mjs)
 
-      - name: Run canonical validator without pretending repo-native OIDC
+      - name: Run canonical candidate validator
         shell: bash
         run: |
           set -euo pipefail
@@ -126,11 +126,22 @@ jobs:
           python - <<'PY'
           import json, os
           from pathlib import Path
-          receipt = json.loads((Path(os.environ['RUNNER_TEMP']) / 'AUTOMATON3_RECEIPT.json').read_text())
+          root = Path(os.environ['RUNNER_TEMP'])
+          receipt = json.loads((root / 'AUTOMATON3_RECEIPT.json').read_text())
+          manifest = json.loads((root / 'AUTOMATON3_CANDIDATE_MANIFEST.json').read_text())
           assert receipt['outcome'] == 'ADMITTED', receipt
           assert receipt['violation_count'] == 0, receipt
           assert receipt['signature_mode'] == 'DETERMINISTIC_VALIDATION_ONLY', receipt
-          print('CANONICAL_VALIDATOR_PASS')
+          assert receipt['admission_scope'] == 'REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION', receipt
+          assert receipt['complete_verification'] == 'NOT_IMPLEMENTED', receipt
+          assert receipt['atomic_admission'] == 'NOT_IMPLEMENTED', receipt
+          assert receipt['effect_bound_admission'] == 'UNAVAILABLE', receipt
+          assert manifest['admission_scope'] == 'REPOSITORY_CANDIDATE_VALIDATION_ONLY', manifest
+          assert manifest['effect_observation_scope'] == 'REFERENCE_ADAPTER_BOUND_ONLY', manifest
+          assert manifest['complete_verification'] == 'NOT_IMPLEMENTED', manifest
+          assert manifest['atomic_admission'] == 'NOT_IMPLEMENTED', manifest
+          assert manifest['effect_bound_admission'] == 'UNAVAILABLE', manifest
+          print('CANONICAL_CANDIDATE_VALIDATOR_PASS')
           PY
 
       - name: Build external exact-head witness
@@ -154,7 +165,8 @@ jobs:
           AUTOMATON3_TESTS=75
           AUTOMATON3_RESULT=PASS
           MCP_FAIL_CLOSED_INTEGRATION=PASS
-          CANONICAL_VALIDATOR=ADMITTED
+          CANDIDATE_VALIDATOR=ADMITTED
+          CANDIDATE_ADMISSION_SCOPE=REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION
           SIGNATURE_MODE=DETERMINISTIC_VALIDATION_ONLY
           EFFECT_ADAPTER_PROTOCOL=IMPLEMENTED_AND_TESTED_REFERENCE
           FILESYSTEM_EFFECT_ADAPTER=IMPLEMENTED_AND_TESTED_REFERENCE
