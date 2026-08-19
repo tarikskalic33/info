@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CANDIDATE_SHA: e709ec782435c0ead524dd876d6fea0c6337fb87
+      CANDIDATE_SHA: 0fb76089114f1e58656b065a1b9d397218b5e916
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -119,7 +119,7 @@ jobs:
           npm run test:resources
           npm run test:automaton3
 
-      - name: Run real provider-session stdio MCP work cycle
+      - name: Run shared-launcher provider stdio MCP work cycle
         working-directory: aegis/sovereign-omega-v2/mcp-server
         run: npm run test:organism
 
@@ -141,6 +141,7 @@ jobs:
               'narrow_capability_validated_runs': 3,
               'broader_orchestration_promotion': 'NONE',
               'provider_session_bootstrap': 'PASS',
+              'shared_provider_launcher': 'PASS',
               'mcp_provider_stdio_e2e': 'PASS',
               'next_work': 'PASS',
               'content_addressed_contribution': 'PASS',
