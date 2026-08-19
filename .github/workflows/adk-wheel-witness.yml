@@ -2,6 +2,7 @@ name: ADK Binary Wheel Witness
 
 on:
   push:
+  pull_request:
   workflow_dispatch:
 
 permissions:
