@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CANDIDATE_SHA: 0fb76089114f1e58656b065a1b9d397218b5e916
+      CANDIDATE_SHA: 93c5eadb543fbd64bc30c91ce667b4523a8ad32e
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -35,6 +35,10 @@ jobs:
       - name: Install canonical Automaton-3 validators
         working-directory: aegis
         run: python -m pip install --requirement harness/requirements-automaton3.txt
+
+      - name: Validate Claude Gemini Codex entrypoints
+        working-directory: aegis
+        run: python scripts/validate-provider-entrypoints.py
 
       - name: Verify narrow capability promotion and committed evidence
         working-directory: aegis
@@ -113,6 +117,26 @@ jobs:
           npm ci
           npm run build
 
+      - name: Exercise provider model-env launcher profiles
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          AEGIS_CLAUDE_MODEL=claude-fixture node scripts/aegis-provider-mcp.mjs anthropic @AEGIS_CLAUDE_MODEL --describe | tee "$RUNNER_TEMP/claude.json"
+          AEGIS_GEMINI_MODEL=gemini-fixture node scripts/aegis-provider-mcp.mjs google @AEGIS_GEMINI_MODEL --describe | tee "$RUNNER_TEMP/gemini.json"
+          AEGIS_CODEX_MODEL=codex-fixture node scripts/aegis-provider-mcp.mjs openai @AEGIS_CODEX_MODEL --describe | tee "$RUNNER_TEMP/codex.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ['RUNNER_TEMP'])
+          expected=[('claude.json','anthropic','claude-fixture'),('gemini.json','google','gemini-fixture'),('codex.json','openai','codex-fixture')]
+          for file,provider,model in expected:
+              x=json.loads((p/file).read_text())
+              assert x['provider']==provider and x['model']==model, x
+              assert x['authority']=='IDENTITY_ONLY_NOT_AUTHORIZATION', x
+          print('CLAUDE_GEMINI_CODEX_SHARED_LAUNCHER=PASS')
+          PY
+
       - name: Run existing MCP regressions
         working-directory: aegis/sovereign-omega-v2/mcp-server
         run: |
@@ -137,6 +161,7 @@ jobs:
               'run_id': os.environ['GITHUB_RUN_ID'],
               'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
               'python_contracts': {'passed': 33, 'failed': 0},
+              'provider_entrypoints': ['anthropic/claude', 'google/gemini', 'openai/codex'],
               'narrow_capability': 'mcp.organism.contribute',
               'narrow_capability_validated_runs': 3,
               'broader_orchestration_promotion': 'NONE',
@@ -147,6 +172,7 @@ jobs:
               'content_addressed_contribution': 'PASS',
               'contribution_prestate_fence': 'PASS',
               'provider_contribution_authority': 'NON_AUTHORITATIVE_EVIDENCE_ONLY',
+              'provider_config_authority_signer_secret': 'ABSENT',
               'd3_operator_approval': 'REQUIRED',
               'd4': 'DENIED',
           }
