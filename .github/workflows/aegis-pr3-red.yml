@@ -55,9 +55,15 @@ jobs:
         run: |
           set -euo pipefail
           python sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py | tee "$RUNNER_TEMP/pr3.log"
-          count=$(grep -c '^test_' sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py || true)
-          test "$count" -ge 15
-          echo "PR3_EFFECT_VERIFIER_TEST_DEFINITIONS=$count"
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          p=Path('sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py')
+          tree=ast.parse(p.read_text())
+          count=sum(1 for node in ast.walk(tree) if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)) and node.name.startswith('test_'))
+          assert count == 15, count
+          print(f'PR3_EFFECT_VERIFIER_TEST_DEFINITIONS={count}')
+          PY
       - name: Run inherited Automaton-3 regression suite
         working-directory: aegis
         shell: bash
