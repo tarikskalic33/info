@@ -1,0 +1,178 @@
+name: AEGIS PR264 Exact Head Witness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_PR264_EXACT_HEAD_WITNESS.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  witness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: f467c06735b3b2240832d057a1f7d5e4098b39f9
+      EXPECTED_BASE_SHA: cd920379df1a23a61b969f0e52549c04bc3a91bb
+    steps:
+      - name: Checkout witness repository
+        uses: actions/checkout@v4
+
+      - name: Checkout exact AEGIS PR264 candidate
+        uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: aegis
+
+      - name: Verify exact lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git -C aegis merge-base "$EXPECTED_BASE_SHA" "$CANDIDATE_SHA")" = "$EXPECTED_BASE_SHA"
+          test "$(git -C aegis rev-list --count "$EXPECTED_BASE_SHA..$CANDIDATE_SHA")" = "97"
+          echo "PR264_EXACT_LINEAGE=PASS"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install verification dependency
+        working-directory: aegis
+        run: python -m pip install --disable-pip-version-check jsonschema==4.23.0
+
+      - name: Compile audit-bound modules
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile agents/cognitive_pipeline_auditbound.py
+          python -m py_compile platform/sol/frontier/*.py
+
+      - name: Verify Copenhagen cognitive recovery
+        working-directory: aegis
+        run: python -m unittest agents.tests.test_cognitive_evidence_binding -v
+
+      - name: Verify frontier provider mesh
+        working-directory: aegis
+        run: python -m unittest discover -s platform/sol/tests -p 'test_frontier_*.py' -v
+
+      - name: Preserve INT4 LUT-KAN replay parity
+        working-directory: aegis
+        run: python -m unittest agents.tests.test_lut_kan_parity -v
+
+      - name: Parse canonical JSON contracts
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m json.tool platform/sol/contracts/platform-registry.v1.json >/dev/null
+          python -m json.tool platform/sol/contracts/execution-request.v1.schema.json >/dev/null
+          python -m json.tool platform/sol/contracts/execution-result.v1.schema.json >/dev/null
+          python -m json.tool platform/sol/contracts/proof-carrying-work-order.v1.schema.json >/dev/null
+          python -m json.tool platform/sol/contracts/sse-stream-lease.v1.schema.json >/dev/null
+          python -m json.tool platform/sol/contracts/frontier-connections.v1.schema.json >/dev/null
+
+      - name: Verify constitutional bundle
+        working-directory: aegis
+        run: node scripts/verify-constitutional-bundle.mjs | tee "$RUNNER_TEMP/constitutional.log"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
+
+      - name: Install Sovereign Runtime dependencies
+        working-directory: aegis/sovereign-omega-v2
+        run: npm ci
+
+      - name: Verify exact frontier and Sensorium runtime behavior
+        working-directory: aegis/sovereign-omega-v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run test -- \
+            test/unit/frontier-inference-gateway.test.ts \
+            test/unit/frontier-provider-transports.test.ts \
+            test/unit/frontier-stream-lease.test.ts \
+            test/unit/frontier-automaton3-verifier.test.ts \
+            test/unit/frontier-runtime.test.ts \
+            test/unit/sensorium-observation.test.ts \
+            test/unit/sensorium-vcm-bridge.test.ts \
+            test/unit/sensorium-degradation.test.ts \
+            | tee "$RUNNER_TEMP/vitest.log"
+
+      - name: Typecheck Sovereign Runtime frontier integration
+        working-directory: aegis/sovereign-omega-v2
+        run: npm run typecheck | tee "$RUNNER_TEMP/typecheck.log"
+
+      - name: Reject obvious committed credential material
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE --exclude='*.md' --exclude='*.yml' '(sk-[A-Za-z0-9_-]{16,}|Bearer[[:space:]]+[A-Za-z0-9._-]{16,}|api[_-]?key[[:space:]]*=[[:space:]]*["'"'][^"'"']{12,})' platform/sol/frontier agents/cognitive_pipeline_auditbound.py sovereign-omega-v2/src/api/frontier-*.ts sovereign-omega-v2/src/sensorium; then
+            echo 'credential-like material detected' >&2
+            exit 1
+          fi
+          echo 'CREDENTIAL_SCAN=PASS'
+
+      - name: Emit unified exact-head witness
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/aegis-pr264-exact-head"
+          mkdir -p "$out"
+          cp "$RUNNER_TEMP/constitutional.log" "$out/"
+          cp "$RUNNER_TEMP/vitest.log" "$out/"
+          cp "$RUNNER_TEMP/typecheck.log" "$out/"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'aegis-pr264-exact-head'
+          files=[]
+          for p in sorted(out.iterdir()):
+              if p.is_file():
+                  b=p.read_bytes(); files.append({'name':p.name,'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)})
+          witness={
+              'schema_version':'1.0.0',
+              'witness_kind':'AEGIS_PR264_EXTERNAL_EXACT_HEAD_WITNESS_V1',
+              'source_repository':os.environ['SOURCE_REPOSITORY'],
+              'candidate_sha':os.environ['CANDIDATE_SHA'],
+              'expected_base_sha':os.environ['EXPECTED_BASE_SHA'],
+              'runner_repository':'tarikskalic33/info',
+              'run_id':os.environ['RUN_ID'],
+              'run_attempt':os.environ['RUN_ATTEMPT'],
+              'constitutional_checker':'PASS',
+              'frontier_sensorium_vitest':'PASS',
+              'typecheck':'PASS',
+              'credential_scan':'PASS',
+              'repo_native_ci':'NOT_ESTABLISHED',
+              'production_admission':'NOT_ESTABLISHED',
+              'files':files,
+          }
+          body=json.dumps(witness,sort_keys=True,separators=(',',':')).encode()
+          witness['witness_root']=hashlib.sha256(body).hexdigest()
+          (out/'EXTERNAL_WITNESS.json').write_text(json.dumps(witness,indent=2,sort_keys=True)+'\n')
+          PY
+          (cd "$out" && sha256sum * | LC_ALL=C sort > SHA256SUMS)
+
+      - name: Upload exact-head witness
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-pr264-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/aegis-pr264-exact-head
+          if-no-files-found: error
+          retention-days: 90
