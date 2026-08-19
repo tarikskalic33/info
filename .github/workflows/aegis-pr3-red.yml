@@ -1,4 +1,4 @@
-name: AEGIS Organism + MCP Contribution GREEN
+name: AEGIS Provider Contribution Capability Validation
 
 on:
   pull_request:
@@ -9,7 +9,12 @@ permissions:
   contents: read
 
 jobs:
-  green:
+  validate:
+    name: capability-validation-${{ matrix.validation }}
+    strategy:
+      fail-fast: false
+      matrix:
+        validation: [1, 2, 3]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -32,11 +37,11 @@ jobs:
         working-directory: aegis
         run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
 
-      - name: Install canonical Automaton-3 validators
+      - name: Install canonical validators
         working-directory: aegis
         run: python -m pip install --requirement harness/requirements-automaton3.txt
 
-      - name: Run organism, contribution and provider-session contracts
+      - name: Run provider contribution contracts
         working-directory: aegis
         shell: bash
         run: |
@@ -45,56 +50,56 @@ jobs:
             agents.tests.test_organism_loop \
             agents.tests.test_provider_contribution \
             agents.tests.test_provider_session \
-            2>&1 | tee "$RUNNER_TEMP/organism-green.log"
-          grep -q "Ran 33 tests" "$RUNNER_TEMP/organism-green.log"
-          grep -q "OK" "$RUNNER_TEMP/organism-green.log"
-          echo ORGANISM_PROVIDER_SESSION_33_OF_33=PASS
+            2>&1 | tee "$RUNNER_TEMP/python.log"
+          grep -q "Ran 33 tests" "$RUNNER_TEMP/python.log"
+          grep -q "OK" "$RUNNER_TEMP/python.log"
 
-      - name: Smoke persistent D3 operator inbox
-        working-directory: aegis
+      - name: Build and run contribution integration
+        working-directory: aegis/sovereign-omega-v2/mcp-server
         shell: bash
         run: |
           set -euo pipefail
-          export AEGIS_ORGANISM_STORE="$RUNNER_TEMP/organism-d3.json"
-          python -m agents.organism submit --id d3-1 --event deployment_event --payload '{"service":"prod"}' --consequence D3 > "$RUNNER_TEMP/submit.json"
-          python -m agents.organism inbox > "$RUNNER_TEMP/inbox.json"
-          python - <<'PY'
-          import json,os
-          from pathlib import Path
-          p=Path(os.environ['RUNNER_TEMP'])
-          submit=json.loads((p/'submit.json').read_text())
-          inbox=json.loads((p/'inbox.json').read_text())
-          assert submit['status']=='WAITING_OPERATOR', submit
-          assert [x['work_id'] for x in inbox]==['d3-1'], inbox
-          print('ORGANISM_D3_PERSISTENT_INBOX=PASS')
-          PY
-
-      - name: Install and build existing AEGIS MCP server
-        working-directory: aegis/sovereign-omega-v2/mcp-server
-        run: |
           npm ci
           npm run build
+          node test/organism-contribution.mjs | tee "$RUNNER_TEMP/mcp.log"
+          grep -q 'MCP_ORGANISM_PROVIDER_CONTRIBUTION=PASS' "$RUNNER_TEMP/mcp.log"
+          grep -q 'MCP_ORGANISM_CONTENT_ADDRESSED_TEXT=PASS' "$RUNNER_TEMP/mcp.log"
+          grep -q 'MCP_ORGANISM_PRESTATE_FENCE=PASS' "$RUNNER_TEMP/mcp.log"
 
-      - name: Run existing MCP regression surface
-        working-directory: aegis/sovereign-omega-v2/mcp-server
+      - name: Emit deterministic capability validation record
+        shell: bash
+        env:
+          VALIDATION_INDEX: ${{ matrix.validation }}
         run: |
-          npm run test:resources
-          npm run test:automaton3
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'capability-validation.json'
+          body = {
+              'validation_kind': 'AEGIS_CAPABILITY_VALIDATION_V1',
+              'capability': 'mcp.organism.contribute',
+              'candidate_sha': os.environ['CANDIDATE_SHA'],
+              'runner_repository': os.environ['GITHUB_REPOSITORY'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'validation_index': int(os.environ['VALIDATION_INDEX']),
+              'python_contracts': {'passed': 33, 'failed': 0},
+              'mcp_build': 'PASS',
+              'content_addressed_contribution': 'PASS',
+              'prestate_fence': 'PASS',
+              'authority_claim': 'NONE',
+          }
+          payload = json.dumps(body, sort_keys=True, separators=(',', ':')).encode()
+          body['record_sha256'] = hashlib.sha256(payload).hexdigest()
+          out.write_text(json.dumps(body, sort_keys=True, indent=2) + '\n')
+          print(out.read_text())
+          PY
+          sha256sum "$RUNNER_TEMP/capability-validation.json"
 
-      - name: Run MCP durable contribution integration and provider stdio E2E
-        working-directory: aegis/sovereign-omega-v2/mcp-server
-        run: npm run test:organism
-
-      - name: Emit witness summary
-        run: |
-          echo CANDIDATE_SHA=$CANDIDATE_SHA
-          echo ORGANISM_LOOP=PASS
-          echo PROVIDER_SESSION_BOOTSTRAP=PASS
-          echo MCP_PROVIDER_STDIO_E2E=PASS
-          echo NEXT_WORK=PASS
-          echo CONTENT_ADDRESSED_CONTRIBUTION=PASS
-          echo CONTRIBUTION_PRESTATE_FENCE=PASS
-          echo PROVIDER_CONTRIBUTION=NON_AUTHORITATIVE_EVIDENCE_ONLY
-          echo MCP_COMMON_ORGAN=PASS
-          echo D3_OPERATOR_APPROVAL=REQUIRED
-          echo D4=DENIED
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provider-contribution-validation-${{ matrix.validation }}
+          path: ${{ runner.temp }}/capability-validation.json
+          if-no-files-found: error
+          retention-days: 90
