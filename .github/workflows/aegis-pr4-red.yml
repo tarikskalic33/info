@@ -1,0 +1,38 @@
+name: AEGIS PR4 RED Contract
+
+on:
+  push:
+    branches: [aegis-pr4-witness]
+    paths:
+      - '.github/workflows/aegis-pr4-red.yml'
+      - 'AEGIS_PR4_RED.md'
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    env:
+      CANDIDATE_SHA: 9f75bf9a1a9e751b8caba45bd73516ec238578c7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove PR4 contract is RED for intended missing CompleteVerifier
+        working-directory: aegis
+        shell: bash
+        run: |
+          set +e
+          python sovereign-omega-v2/python/tests/test_complete_verifier_pr4.py > "$RUNNER_TEMP/red.log" 2>&1
+          rc=$?
+          cat "$RUNNER_TEMP/red.log"
+          test "$rc" -ne 0
+          grep -q "No module named 'harness.sdk.complete_verifier'" "$RUNNER_TEMP/red.log"
+          echo "PR4_RED_INTENDED_MISSING_COMPLETE_VERIFIER=PASS"
