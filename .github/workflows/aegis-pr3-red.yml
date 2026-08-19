@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CANDIDATE_SHA: 65416445a72c2a166afee7b178e80f2243b1066e
+      CANDIDATE_SHA: 74b3b01ea8f3dec393ce9bbfae4a328d306f872a
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -36,15 +36,19 @@ jobs:
         working-directory: aegis
         run: python -m pip install --requirement harness/requirements-automaton3.txt
 
-      - name: Run durable organism and provider contribution contracts
+      - name: Run organism, contribution and provider-session contracts
         working-directory: aegis
         shell: bash
         run: |
           set -euo pipefail
-          python -m unittest -v agents.tests.test_organism_loop agents.tests.test_provider_contribution 2>&1 | tee "$RUNNER_TEMP/organism-green.log"
-          grep -q "Ran 17 tests" "$RUNNER_TEMP/organism-green.log"
+          python -m unittest -v \
+            agents.tests.test_organism_loop \
+            agents.tests.test_provider_contribution \
+            agents.tests.test_provider_session \
+            2>&1 | tee "$RUNNER_TEMP/organism-green.log"
+          grep -q "Ran 33 tests" "$RUNNER_TEMP/organism-green.log"
           grep -q "OK" "$RUNNER_TEMP/organism-green.log"
-          echo ORGANISM_AND_PROVIDER_CONTRIBUTION_17_OF_17=PASS
+          echo ORGANISM_PROVIDER_SESSION_33_OF_33=PASS
 
       - name: Smoke persistent D3 operator inbox
         working-directory: aegis
@@ -77,7 +81,7 @@ jobs:
           npm run test:resources
           npm run test:automaton3
 
-      - name: Run MCP to organism provider-contribution integration
+      - name: Run MCP durable contribution integration
         working-directory: aegis/sovereign-omega-v2/mcp-server
         run: npm run test:organism
 
@@ -85,6 +89,10 @@ jobs:
         run: |
           echo CANDIDATE_SHA=$CANDIDATE_SHA
           echo ORGANISM_LOOP=PASS
+          echo PROVIDER_SESSION_BOOTSTRAP=PASS
+          echo NEXT_WORK=PASS
+          echo CONTENT_ADDRESSED_CONTRIBUTION=PASS
+          echo CONTRIBUTION_PRESTATE_FENCE=PASS
           echo PROVIDER_CONTRIBUTION=NON_AUTHORITATIVE_EVIDENCE_ONLY
           echo MCP_COMMON_ORGAN=PASS
           echo D3_OPERATOR_APPROVAL=REQUIRED
