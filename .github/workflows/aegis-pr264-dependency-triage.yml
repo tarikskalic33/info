@@ -1,0 +1,99 @@
+name: AEGIS PR264 Dependency Triage
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_PR264_DEPENDENCY_TRIAGE.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: 31aec51c32caa2431cb94ee742c912059802568b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
+      - name: Install exact lock graph
+        working-directory: aegis/sovereign-omega-v2
+        run: npm ci
+      - name: Capture full and production audits
+        working-directory: aegis/sovereign-omega-v2
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > "$RUNNER_TEMP/npm-audit-full.json"
+          echo "FULL_AUDIT_RC=$?" >> "$GITHUB_ENV"
+          npm audit --omit=dev --json > "$RUNNER_TEMP/npm-audit-prod.json"
+          echo "PROD_AUDIT_RC=$?" >> "$GITHUB_ENV"
+          exit 0
+      - name: Emit normalized triage
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          temp=Path(os.environ['RUNNER_TEMP'])
+          def load(name):
+              return json.loads((temp/name).read_text(encoding='utf-8'))
+          def normalize(doc):
+              meta=doc.get('metadata',{}).get('vulnerabilities',{})
+              vulns=[]
+              for name, item in sorted(doc.get('vulnerabilities',{}).items()):
+                  via=[]
+                  for v in item.get('via',[]):
+                      if isinstance(v,str): via.append({'name':v})
+                      else: via.append({k:v.get(k) for k in ('source','name','dependency','title','url','severity','range') if k in v})
+                  vulns.append({
+                      'name':name,
+                      'severity':item.get('severity'),
+                      'isDirect':item.get('isDirect'),
+                      'range':item.get('range'),
+                      'nodes':item.get('nodes',[]),
+                      'via':via,
+                      'effects':item.get('effects',[]),
+                      'fixAvailable':item.get('fixAvailable'),
+                  })
+              return {'counts':meta,'vulnerabilities':vulns}
+          full=normalize(load('npm-audit-full.json'))
+          prod=normalize(load('npm-audit-prod.json'))
+          witness={
+              'schema_version':'1.0.0',
+              'witness_kind':'AEGIS_PR264_DEPENDENCY_TRIAGE_V1',
+              'source_repository':os.environ['SOURCE_REPOSITORY'],
+              'candidate_sha':os.environ['CANDIDATE_SHA'],
+              'full':full,
+              'production':prod,
+              'full_audit_rc':int(os.environ['FULL_AUDIT_RC']),
+              'prod_audit_rc':int(os.environ['PROD_AUDIT_RC']),
+          }
+          body=json.dumps(witness,sort_keys=True,separators=(',',':')).encode()
+          witness['witness_root']=hashlib.sha256(body).hexdigest()
+          out=temp/'aegis-pr264-dependency-triage'
+          out.mkdir()
+          (out/'TRIAGE.json').write_text(json.dumps(witness,indent=2,sort_keys=True)+'\n')
+          (out/'npm-audit-full.json').write_bytes((temp/'npm-audit-full.json').read_bytes())
+          (out/'npm-audit-prod.json').write_bytes((temp/'npm-audit-prod.json').read_bytes())
+          print(json.dumps(witness,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aegis-pr264-dependency-triage-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/aegis-pr264-dependency-triage
+          if-no-files-found: error
+          retention-days: 90
