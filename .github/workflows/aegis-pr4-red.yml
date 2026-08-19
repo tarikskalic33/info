@@ -1,8 +1,8 @@
 name: AEGIS PR4 RED Contract
 
 on:
-  push:
-    branches: [aegis-pr4-witness]
+  pull_request:
+    branches: [main]
     paths:
       - '.github/workflows/aegis-pr4-red.yml'
       - 'AEGIS_PR4_RED.md'
