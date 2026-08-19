@@ -1,6 +1,6 @@
-# AEGIS PR-2 Full Exact-Head Witness
+# AEGIS PR-2 Final Scoped Exact-Head Witness
 
-Exact source candidate: `Aegis-Omega/AEGIS-OMEGA@cfa2f5764de4a283e4b42b11444ef2ddc0198ec7`
+Exact source candidate: `Aegis-Omega/AEGIS-OMEGA@e3dc56f3da9156c091bfbc2067d775aa2190ac6d`
 
 Stacked parent: `6bf071d9c757d0f3514904f1efad3e3b14a60a09`
 
@@ -11,6 +11,7 @@ Required evidence scope:
 - claims and constitutional hash checks;
 - canonical `validate-automaton3.py` with external-runner OIDC availability;
 - manifest binding of effect adapter/test/schema;
+- receipt-level `admission_scope = REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION`;
 - caller-supplied post-state authority remains forbidden;
 - CompleteVerification / AtomicAdmission / EffectBoundAdmission remain unavailable.
 
