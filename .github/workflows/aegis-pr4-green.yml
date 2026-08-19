@@ -1,0 +1,30 @@
+name: AEGIS PR4 GREEN Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/aegis-pr4-green.yml'
+      - 'AEGIS_PR4_GREEN.md'
+
+permissions:
+  contents: read
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    env:
+      CANDIDATE_SHA: b26d51ca6d3acbdffcb05275a09a525c5c324e77
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run PR4 CompleteVerification falsification suite
+        working-directory: aegis
+        run: python sovereign-omega-v2/python/tests/test_complete_verifier_pr4.py
