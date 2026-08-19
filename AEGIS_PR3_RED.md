@@ -1,5 +1,5 @@
-# AEGIS Provider Contribution Capability Validation
+# AEGIS Provider Contribution Skill Promotion Candidate
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@cc9671326bee5c347cdc3070b75a3c0fe647541d`.
+Parent candidate: `Aegis-Omega/AEGIS-OMEGA@4c1f75e7d2790d851fe995684e61dbb48003ef2e`.
 
-Run three isolated validation jobs for `mcp.organism.contribute`. Each must pass 33/33 Python contracts, MCP build, content-addressed contribution, and pre-state fencing, then upload a deterministic validation record. No authority promotion is claimed by this trigger.
+Generate a deterministic promoted `skill_tree.json` that adds only the narrow `organism_provider_contribution` skill from the three committed validation records. Broader `orchestration_routing` authority must remain unchanged.
