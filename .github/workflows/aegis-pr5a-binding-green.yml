@@ -1,0 +1,65 @@
+name: AEGIS PR5A Provider Binding GREEN
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'PR5A_WITNESS_TRIGGER_15.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+  CANDIDATE_SHA: f50fa19734bb5c358e550fb50f6802e06289eee1
+  PROVIDER_PARENT_SHA: 31aec51c32caa2431cb94ee742c912059802568b
+  VERIFICATION_PARENT_SHA: 6407db1b0c4176f67a1d7ecbb16eca77d131d87e
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: aegis
+      - name: Prove ancestry
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis merge-base "$PROVIDER_PARENT_SHA" "$CANDIDATE_SHA")" = "$PROVIDER_PARENT_SHA"
+          test "$(git -C aegis merge-base "$VERIFICATION_PARENT_SHA" "$CANDIDATE_SHA")" = "$VERIFICATION_PARENT_SHA"
+          echo PR5A_BINDING_ANCESTRY=PASS
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Run Python binding falsifiers and schema
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python sovereign-omega-v2/python/tests/test_provider_execution_binding_pr5a.py |& tee "$RUNNER_TEMP/python-binding.log"
+          python -m pip install --disable-pip-version-check jsonschema==4.23.0
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema.validators import validator_for
+          schema=json.loads(Path('schemas/provider-execution-evidence-binding.v1.schema.json').read_text())
+          validator_for(schema).check_schema(schema)
+          print('PR5A_PROVIDER_BINDING_SCHEMA=PASS')
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
+      - name: Run TypeScript binding falsifiers and typecheck
+        working-directory: aegis/sovereign-omega-v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run test -- test/unit/frontier-provider-evidence-binding.test.ts | tee "$RUNNER_TEMP/ts-binding.log"
+          npm run typecheck
+          echo PR5A_TS_PROVIDER_BINDING_GREEN=PASS
