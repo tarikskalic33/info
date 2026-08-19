@@ -1,0 +1,271 @@
+name: AEGIS PR4 Full Exact-Head Witness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/aegis-pr4-full-witness.yml'
+      - 'AEGIS_PR4_FULL.md'
+
+permissions:
+  contents: read
+
+jobs:
+  witness:
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: 6407db1b0c4176f67a1d7ecbb16eca77d131d87e
+      EXPECTED_PARENT_SHA: bf29570cf4ae189de93f38a9018e124c2136c687
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: aegis
+
+      - name: Verify exact stacked lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git -C aegis merge-base "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA")" = "$EXPECTED_PARENT_SHA"
+          echo "PR4_EXACT_STACKED_LINEAGE=PASS"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/mcp-server/package-lock.json
+
+      - name: Install schema validator
+        run: python -m pip install jsonschema==4.23.0
+
+      - name: Validate CompleteVerification schema and real TRUE instance
+        working-directory: aegis
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import tempfile
+          from dataclasses import asdict
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+
+          from harness.sdk.complete_verifier import TRUE, CompleteVerifier
+          from harness.sdk.effect_adapters import FilesystemEffectAdapter, filesystem_state_commitment
+          from harness.sdk.effect_verifier import EffectVerifier
+          from harness.sdk.sovereign_execution import SCHEMA_VERSION
+          from harness.sdk.transition_receipts import (
+              PERMIT,
+              DECISION_RECEIPT_KIND,
+              EXECUTION_RECEIPT_KIND,
+              DecisionReceipt,
+              ExecutionReceipt,
+              TransitionIdentity,
+              admission_policy_commitment,
+              verifier_policy_commitment,
+          )
+
+          h = lambda i: f"{i:064x}"
+          with tempfile.TemporaryDirectory() as td:
+              root = Path(td)
+              target = root / "state.txt"
+              target.write_bytes(b"before")
+              pre = filesystem_state_commitment(allowed_root=root, target=target)
+              transition = TransitionIdentity(
+                  schema_version=SCHEMA_VERSION,
+                  source_commit="e" * 40,
+                  pre_state_commitment=pre,
+                  identity_root=h(1),
+                  delegation_commitment=h(2),
+                  capability_commitment=h(3),
+                  action_digest=h(4),
+                  deterministic_nonce="pr4-schema-instance",
+                  fence_commitment=h(5),
+                  verifier_policy_commitment=verifier_policy_commitment(),
+                  admission_policy_commitment=admission_policy_commitment(),
+              )
+              decision = DecisionReceipt(
+                  receipt_kind=DECISION_RECEIPT_KIND,
+                  transition_id=transition.root,
+                  decision_outcome=PERMIT,
+                  policy_decision_root=h(6),
+              )
+              execution = ExecutionReceipt(
+                  receipt_kind=EXECUTION_RECEIPT_KIND,
+                  transition_id=transition.root,
+                  execution_instance_id="exec-pr4-schema",
+                  outcome="SUCCEEDED",
+                  result_digest=h(7),
+              )
+              adapter = FilesystemEffectAdapter(allowed_root=root)
+              handle = adapter.prepare_observation(transition=transition, target=target)
+              target.write_bytes(b"after")
+              witness = adapter.observe_effect(
+                  transition=transition,
+                  handle=handle,
+                  execution_receipt=execution,
+              )
+              effect_verifier = EffectVerifier()
+              effect_verification = effect_verifier.verify_effect(
+                  transition=transition,
+                  execution_receipt=execution,
+                  witness=witness,
+              )
+              assert effect_verification.status == TRUE
+              effect_receipt = effect_verifier.issue_effect_receipt(
+                  transition=transition,
+                  execution_receipt=execution,
+                  witness=witness,
+                  verification=effect_verification,
+              )
+              result = CompleteVerifier().verify_complete(
+                  transition=transition,
+                  decision_receipt=decision,
+                  execution_receipt=execution,
+                  effect_witness=witness,
+                  effect_verification=effect_verification,
+                  effect_receipt=effect_receipt,
+              )
+              assert result.status == TRUE, result
+              schema = json.loads(Path("schemas/complete-verification-result.v1.schema.json").read_text())
+              Draft202012Validator.check_schema(schema)
+              payload = json.loads(json.dumps(asdict(result)))
+              Draft202012Validator(schema).validate(payload)
+              Path("/tmp/pr4-complete-result.json").write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")
+              print("PR4_COMPLETE_SCHEMA_INSTANCE=PASS")
+              print("PR4_COMPLETE_RESULT_ROOT=" + result.root)
+          PY
+
+      - name: Run PR4 primary falsification suite
+        working-directory: aegis
+        shell: bash
+        run: |
+          python sovereign-omega-v2/python/tests/test_complete_verifier_pr4.py |& tee "$RUNNER_TEMP/pr4-main.log"
+
+      - name: Run PR4 receipt-binding falsification suite
+        working-directory: aegis
+        shell: bash
+        run: |
+          python sovereign-omega-v2/python/tests/test_complete_verifier_pr4_receipt_binding.py |& tee "$RUNNER_TEMP/pr4-binding.log"
+
+      - name: Run PR3 VerifyEffect regression unchanged
+        working-directory: aegis
+        shell: bash
+        run: |
+          python sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py |& tee "$RUNNER_TEMP/pr3.log"
+
+      - name: Run inherited Automaton-3 regression suite
+        working-directory: aegis
+        shell: bash
+        run: |
+          python scripts/run-automaton3-tests.py --output "$RUNNER_TEMP/automaton3-summary.json" --log "$RUNNER_TEMP/automaton3.log"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'automaton3-summary.json'
+          s = json.loads(p.read_text())
+          assert s['actual_test_count'] == 75, s
+          assert s['return_code'] == 0, s
+          assert s['test_count_matches_expected'] is True, s
+          print('INHERITED_AUTOMATON3_75_OF_75=PASS')
+          PY
+
+      - name: Verify PR4 policy and non-authority boundary
+        working-directory: aegis
+        shell: bash
+        run: |
+          python - <<'PY'
+          from harness.sdk.complete_verifier import PR4_COMPLETE_VERIFIER_POLICY
+          import harness.sdk.transition_receipts as tr
+          assert PR4_COMPLETE_VERIFIER_POLICY['policy_id'] == 'AEGIS_PR4_COMPLETE_VERIFIER_POLICY_V1'
+          assert PR4_COMPLETE_VERIFIER_POLICY['safe_incompleteness'] is True
+          assert PR4_COMPLETE_VERIFIER_POLICY['effect_verification_recompute'] == 'REQUIRED'
+          assert PR4_COMPLETE_VERIFIER_POLICY['causal_claim_admission'] == 'NOT_IMPLEMENTED'
+          assert PR4_COMPLETE_VERIFIER_POLICY['atomic_admission'] == 'UNAVAILABLE'
+          assert PR4_COMPLETE_VERIFIER_POLICY['effect_bound_admission'] == 'UNAVAILABLE'
+          assert PR4_COMPLETE_VERIFIER_POLICY['production_admission'] == 'NOT_ESTABLISHED'
+          assert tr.PR3_VERIFIER_POLICY['verify_effect'] == 'REQUIRED'
+          assert tr.PR3_VERIFIER_POLICY['effect_receipt_production'] == 'VERIFIER_GATED_ONLY'
+          assert tr.PR3_VERIFIER_POLICY['complete_verification'] == 'UNAVAILABLE'
+          print('PR4_SAFE_INCOMPLETENESS_BOUNDARY=PASS')
+          PY
+
+      - name: MCP fail-closed integration
+        working-directory: aegis/sovereign-omega-v2/mcp-server
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run test:resources
+          npm run test:automaton3 | tee "$RUNNER_TEMP/mcp.log"
+          grep -q 'AUTOMATON3_MCP_PASS' "$RUNNER_TEMP/mcp.log"
+          echo 'MCP_FAIL_CLOSED_INTEGRATION=PASS'
+
+      - name: Validate claims and frozen hashes
+        working-directory: aegis
+        shell: bash
+        run: |
+          node scripts/validate-claims.mjs
+          (cd sovereign-omega-v2 && node scripts/verify-hashes.mjs)
+
+      - name: Emit exact-head witness bundle
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pr4-witness"
+          mkdir -p "$out"
+          cp /tmp/pr4-complete-result.json "$out/complete-result.json"
+          cp "$RUNNER_TEMP/pr4-main.log" "$out/"
+          cp "$RUNNER_TEMP/pr4-binding.log" "$out/"
+          cp "$RUNNER_TEMP/pr3.log" "$out/"
+          cp "$RUNNER_TEMP/automaton3-summary.json" "$out/"
+          cp "$RUNNER_TEMP/automaton3.log" "$out/"
+          cp "$RUNNER_TEMP/mcp.log" "$out/"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'pr4-witness'
+          files = []
+          for p in sorted(out.iterdir()):
+              b = p.read_bytes()
+              files.append({'name': p.name, 'sha256': hashlib.sha256(b).hexdigest(), 'size': len(b)})
+          witness = {
+              'schema_version': '1.0.0',
+              'witness_kind': 'AEGIS_PR4_EXTERNAL_EXACT_HEAD_WITNESS_V1',
+              'candidate_sha': os.environ['CANDIDATE_SHA'],
+              'expected_parent_sha': os.environ['EXPECTED_PARENT_SHA'],
+              'run_id': os.environ['RUN_ID'],
+              'pr4_primary_tests': 25,
+              'pr4_receipt_binding_tests': 4,
+              'pr3_regression_tests': 15,
+              'inherited_automaton3_tests': 75,
+              'complete_verification': 'IMPLEMENTED_REFERENCE',
+              'causal_claim_admission': 'NOT_IMPLEMENTED',
+              'atomic_admission': 'UNAVAILABLE',
+              'effect_bound_admission': 'UNAVAILABLE',
+              'production_admission': 'NOT_ESTABLISHED',
+              'aegis_repo_native_ci': 'NOT_ESTABLISHED',
+              'files': files,
+          }
+          witness['witness_root'] = hashlib.sha256(json.dumps(witness, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+          (out / 'EXTERNAL_WITNESS.json').write_text(json.dumps(witness, indent=2, sort_keys=True) + '\n')
+          print('PR4_EXTERNAL_WITNESS_ROOT=' + witness['witness_root'])
+          PY
+          (cd "$out" && sha256sum * | sort > SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aegis-pr4-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/pr4-witness
+          if-no-files-found: error
+          retention-days: 90
