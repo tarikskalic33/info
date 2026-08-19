@@ -1,0 +1,56 @@
+name: AEGIS UCI-1 Exact-Head Witness
+
+on:
+  push:
+    paths:
+      - '.github/workflows/aegis-uci1-exact-head-witness.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
+  CANDIDATE_SHA: 622faf672845138925c16c12e2f852ae2e64147b
+  EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
+
+jobs:
+  uci1-witness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout witness repo
+        uses: actions/checkout@v4
+
+      - name: Checkout exact AEGIS candidate
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.AEGIS_REPO }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+
+      - name: Bind exact candidate and parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd aegis
+          actual="$(git rev-parse HEAD)"
+          base="$(git merge-base HEAD origin/main || true)"
+          echo "CANDIDATE_SHA=$actual"
+          echo "EXPECTED_PARENT_SHA=${EXPECTED_PARENT_SHA}"
+          test "$actual" = "$CANDIDATE_SHA"
+          test "$base" = "$EXPECTED_PARENT_SHA"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
+
+      - name: Install exact dependencies
+        working-directory: aegis/sovereign-omega-v2
+        run: npm ci
+
+      - name: UCI-1 focused contract test
+        working-directory: aegis/sovereign-omega-v2
+        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts
