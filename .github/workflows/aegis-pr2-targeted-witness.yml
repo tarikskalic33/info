@@ -1,0 +1,68 @@
+name: AEGIS PR-2 Targeted Exact-Head Witness
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pr2-targeted:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout witness repo
+        uses: actions/checkout@v4
+
+      - name: Checkout exact AEGIS PR-2 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Aegis-Omega/AEGIS-OMEGA.git aegis
+          cd aegis
+          git fetch origin 038a497e12c8f27de68091f551a85aff49f69740
+          git checkout --detach 038a497e12c8f27de68091f551a85aff49f69740
+          test "$(git rev-parse HEAD)" = "038a497e12c8f27de68091f551a85aff49f69740"
+          echo "AEGIS_CANDIDATE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run PR-2 falsification suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd aegis
+          python sovereign-omega-v2/python/tests/test_effect_adapters_pr2.py 2>&1 | tee "$RUNNER_TEMP/pr2-targeted.log"
+          grep -F 'Ran 17 tests' "$RUNNER_TEMP/pr2-targeted.log"
+          grep -F 'OK' "$RUNNER_TEMP/pr2-targeted.log"
+
+      - name: Build targeted witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/aegis-pr2-targeted-witness"
+          mkdir -p "$out"
+          cp "$RUNNER_TEMP/pr2-targeted.log" "$out/PR2_TARGETED.log"
+          cat > "$out/WITNESS.txt" <<EOF
+          WITNESS_KIND=AEGIS_PR2_TARGETED_EXTERNAL_EXACT_HEAD_WITNESS_V1
+          SOURCE_REPOSITORY=Aegis-Omega/AEGIS-OMEGA
+          CANDIDATE_SHA=$AEGIS_CANDIDATE_SHA
+          RUNNER_REPOSITORY=tarikskalic33/info
+          PR2_FALSIFICATION_TESTS=17
+          PR2_TARGETED_RESULT=PASS
+          COMPLETE_VERIFICATION=NOT_IMPLEMENTED
+          ATOMIC_ADMISSION=NOT_IMPLEMENTED
+          EFFECT_BOUND_ADMISSION=UNAVAILABLE
+          EOF
+          (cd "$out" && sha256sum * | LC_ALL=C sort > SHA256SUMS)
+
+      - name: Upload targeted witness
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-pr2-targeted-${{ env.AEGIS_CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/aegis-pr2-targeted-witness
+          if-no-files-found: error
+          retention-days: 90
