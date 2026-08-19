@@ -1,0 +1,144 @@
+name: AEGIS PR2 Final Observation Witness
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['AEGIS_PR2_FINAL_OBSERVATION_WITNESS.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  witness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: 154c37a49c7b8aab7400312fba1749b3c17f0796
+      EXPECTED_PARENT_SHA: 6bf071d9c757d0f3514904f1efad3e3b14a60a09
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: aegis
+      - name: Verify exact lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git -C aegis merge-base "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA")" = "$EXPECTED_PARENT_SHA"
+          echo PR2_EXACT_LINEAGE=PASS
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/mcp-server/package-lock.json
+      - name: Install schema validator
+        working-directory: aegis
+        run: python -m pip install jsonschema==4.23.0
+      - name: Validate schemas
+        working-directory: aegis
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema.validators import validator_for
+          paths=(sorted(Path('schemas').glob('*-envelope.v1.schema.json'))+sorted(Path('schemas').glob('*-receipt.v1.schema.json'))+[Path('schemas/effect-witness.v1.schema.json'),Path('schemas/writer-lease.v1.schema.json')])
+          for p in paths: validator_for(json.loads(p.read_text())).check_schema(json.loads(p.read_text()))
+          print('SCHEMA_SURFACE=PASS')
+          PY
+      - name: Run exact 75-test suite
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run-automaton3-tests.py --output "$RUNNER_TEMP/summary.json" --log "$RUNNER_TEMP/tests.log"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          s=json.loads((Path(os.environ['RUNNER_TEMP'])/'summary.json').read_text())
+          assert s['actual_test_count']==75 and s['return_code']==0 and s['test_count_matches_expected'] is True, s
+          for k in ('effect_receipt_production_unavailable_asserted','pr2_adapter_bound_effect_evidence_production_asserted','pr2_verify_effect_not_implemented_asserted','pr2_verifier_policy_commitment_current_asserted','pr2_complete_verification_unavailable_asserted','pr2_atomic_admission_unavailable_asserted','pr2_effect_bound_admission_unavailable_asserted'):
+              assert s[k] is True,(k,s)
+          assert s.get('pr2_adapter_bound_effect_receipt_production_asserted') is not True,s
+          print('AUTOMATON3_75_OF_75=PASS')
+          PY
+      - name: Verify observation-only boundary
+        working-directory: aegis
+        shell: bash
+        run: |
+          python - <<'PY'
+          import harness.sdk.transition_receipts as tr
+          from harness.sdk.effect_adapters import VERIFY_EFFECT_STATUS
+          assert tr.PR2_VERIFIER_POLICY['policy_id']=='AEGIS_PR2_VERIFIER_POLICY_V2'
+          assert tr.PR2_VERIFIER_POLICY['effect_evidence_production']=='ADAPTER_BOUND_ONLY'
+          assert tr.PR2_VERIFIER_POLICY['verify_effect']=='NOT_IMPLEMENTED'
+          assert tr.PR2_VERIFIER_POLICY['effect_receipt_production']=='UNAVAILABLE'
+          assert VERIFY_EFFECT_STATUS=='does not implement VerifyEffect'
+          assert not hasattr(tr,'_issue_adapter_bound_effect_receipt')
+          assert not hasattr(tr,'_EFFECT_RECEIPT_PRODUCER_CAPABILITY')
+          print('WORLD_OBSERVATION_TO_EFFECT_EVIDENCE_ONLY=PASS')
+          PY
+      - name: MCP fail-closed integration
+        working-directory: aegis/sovereign-omega-v2/mcp-server
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run test:resources
+          npm run test:automaton3 | tee "$RUNNER_TEMP/mcp.log"
+      - name: Validate claims and frozen hashes
+        working-directory: aegis
+        run: |
+          node scripts/validate-claims.mjs
+          (cd sovereign-omega-v2 && node scripts/verify-hashes.mjs)
+      - name: Canonical candidate validator
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate-automaton3.py --candidate-sha "$CANDIDATE_SHA" --expected-parent-sha "$EXPECTED_PARENT_SHA" --test-summary "$RUNNER_TEMP/summary.json" --mcp-log "$RUNNER_TEMP/mcp.log" --receipt-output "$RUNNER_TEMP/receipt.json" --manifest-output "$RUNNER_TEMP/manifest.json"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          t=Path(os.environ['RUNNER_TEMP']); r=json.loads((t/'receipt.json').read_text()); m=json.loads((t/'manifest.json').read_text())
+          assert r['outcome']=='ADMITTED' and r['violation_count']==0,r
+          assert r['effect_evidence_production']=='ADAPTER_BOUND_ONLY'
+          assert r['verify_effect']=='NOT_IMPLEMENTED'
+          assert r['effect_receipt_production']=='UNAVAILABLE'
+          assert r['complete_verification']=='NOT_IMPLEMENTED' and r['atomic_admission']=='NOT_IMPLEMENTED' and r['effect_bound_admission']=='UNAVAILABLE'
+          assert m['effect_evidence_production']=='ADAPTER_BOUND_ONLY' and m['verify_effect']=='NOT_IMPLEMENTED' and m['effect_receipt_production']=='UNAVAILABLE'
+          print('CANONICAL_VALIDATOR=PASS')
+          PY
+      - name: Emit witness
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/out"; mkdir -p "$out"
+          cp "$RUNNER_TEMP/summary.json" "$RUNNER_TEMP/tests.log" "$RUNNER_TEMP/mcp.log" "$RUNNER_TEMP/receipt.json" "$RUNNER_TEMP/manifest.json" "$out/"
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'out'; files=[]
+          for p in sorted(out.iterdir()):
+              b=p.read_bytes(); files.append({'name':p.name,'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)})
+          w={'schema_version':'1.0.0','witness_kind':'AEGIS_PR2_EXTERNAL_EXACT_HEAD_WITNESS_V2','candidate_sha':os.environ['CANDIDATE_SHA'],'expected_parent_sha':os.environ['EXPECTED_PARENT_SHA'],'run_id':os.environ['RUN_ID'],'tests':75,'effect_observation':'IMPLEMENTED_REFERENCE','effect_evidence_production':'ADAPTER_BOUND_ONLY','verify_effect':'NOT_IMPLEMENTED','effect_receipt_production':'UNAVAILABLE','complete_verification':'NOT_IMPLEMENTED','atomic_admission':'NOT_IMPLEMENTED','effect_bound_admission':'UNAVAILABLE','files':files}
+          w['witness_root']=hashlib.sha256(json.dumps(w,sort_keys=True,separators=(',',':')).encode()).hexdigest(); (out/'EXTERNAL_WITNESS.json').write_text(json.dumps(w,indent=2,sort_keys=True)+'\n')
+          PY
+          (cd "$out" && sha256sum * | sort > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aegis-pr2-final-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/out
+          if-no-files-found: error
+          retention-days: 90
