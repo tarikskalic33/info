@@ -1,0 +1,193 @@
+name: AEGIS PR-1 External Exact-Head Witness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_PR1_EXTERNAL_WITNESS.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  witness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: 6bf071d9c757d0f3514904f1efad3e3b14a60a09
+      EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
+    steps:
+      - name: Checkout witness repository
+        uses: actions/checkout@v4
+
+      - name: Checkout exact AEGIS candidate
+        uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: aegis
+
+      - name: Verify exact source lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git -C aegis merge-base "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA")" = "$EXPECTED_PARENT_SHA"
+          test "$(git -C aegis rev-parse "$EXPECTED_PARENT_SHA")" = "$EXPECTED_PARENT_SHA"
+          echo "AEGIS_EXTERNAL_SOURCE_SHA=$CANDIDATE_SHA"
+          echo "AEGIS_EXTERNAL_PARENT_SHA=$EXPECTED_PARENT_SHA"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/mcp-server/package-lock.json
+
+      - name: Install exact schema validator
+        working-directory: aegis
+        run: python -m pip install jsonschema==4.23.0
+
+      - name: Validate PR-1 schemas
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema.validators import validator_for
+          paths = (
+              sorted(Path('schemas').glob('*-envelope.v1.schema.json'))
+              + sorted(Path('schemas').glob('*-receipt.v1.schema.json'))
+              + [Path('schemas/writer-lease.v1.schema.json')]
+          )
+          for path in paths:
+              schema = json.loads(path.read_text(encoding='utf-8'))
+              validator_for(schema).check_schema(schema)
+              print(f'SCHEMA_OK {path}')
+          PY
+
+      - name: Run exact Automaton-3 58-test suite
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run-automaton3-tests.py \
+            --output "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" \
+            --log "$RUNNER_TEMP/AUTOMATON3_TEST.log"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'AUTOMATON3_TEST_SUMMARY.json'
+          s = json.loads(p.read_text(encoding='utf-8'))
+          assert s['return_code'] == 0, s
+          assert s['actual_test_count'] == 58, s
+          assert s['test_count_complete'] is True, s
+          assert s['test_count_matches_expected'] is True, s
+          assert s['pr1_safe_incompleteness_asserted'] is True, s
+          assert s['transition_binding_asserted'] is True, s
+          assert s['receipt_separation_asserted'] is True, s
+          assert s['valid_effect_receipt_production_unavailable_asserted'] is True, s
+          assert s['legacy_receipt_effect_evidence_forbidden_asserted'] is True, s
+          assert s['legacy_fallback_forbidden_asserted'] is True, s
+          assert s['effect_bound_admission_unavailable_asserted'] is True, s
+          print('AEGIS_PR1_58_TESTS_PASS')
+          PY
+
+      - name: Build and test MCP fail-closed integration
+        working-directory: aegis/sovereign-omega-v2/mcp-server
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run test:resources
+          npm run test:automaton3 | tee "$RUNNER_TEMP/AUTOMATON3_MCP.log"
+
+      - name: Validate claims and constitutional anchors
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/validate-claims.mjs
+          (cd sovereign-omega-v2 && node scripts/verify-hashes.mjs)
+
+      - name: Validate exact candidate with canonical validator
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/validate-automaton3.py \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --expected-parent-sha "$EXPECTED_PARENT_SHA" \
+            --test-summary "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" \
+            --mcp-log "$RUNNER_TEMP/AUTOMATON3_MCP.log" \
+            --receipt-output "$RUNNER_TEMP/AUTOMATON3_RECEIPT.json" \
+            --manifest-output "$RUNNER_TEMP/AUTOMATON3_CANDIDATE_MANIFEST.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          receipt = json.loads((Path(os.environ['RUNNER_TEMP']) / 'AUTOMATON3_RECEIPT.json').read_text(encoding='utf-8'))
+          assert receipt['outcome'] == 'ADMITTED', receipt
+          assert receipt['candidate_sha'] == os.environ['CANDIDATE_SHA'], receipt
+          assert receipt['expected_parent_sha'] == os.environ['EXPECTED_PARENT_SHA'], receipt
+          print('AEGIS_CANONICAL_VALIDATOR_PASS')
+          PY
+
+      - name: Emit external witness bundle
+        working-directory: aegis
+        shell: bash
+        env:
+          WITNESS_REPOSITORY: ${{ github.repository }}
+          WITNESS_RUN_ID: ${{ github.run_id }}
+          WITNESS_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/aegis-pr1-external-witness"
+          cp "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" "$RUNNER_TEMP/aegis-pr1-external-witness/"
+          cp "$RUNNER_TEMP/AUTOMATON3_TEST.log" "$RUNNER_TEMP/aegis-pr1-external-witness/"
+          cp "$RUNNER_TEMP/AUTOMATON3_MCP.log" "$RUNNER_TEMP/aegis-pr1-external-witness/"
+          cp "$RUNNER_TEMP/AUTOMATON3_RECEIPT.json" "$RUNNER_TEMP/aegis-pr1-external-witness/"
+          cp "$RUNNER_TEMP/AUTOMATON3_CANDIDATE_MANIFEST.json" "$RUNNER_TEMP/aegis-pr1-external-witness/"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'aegis-pr1-external-witness'
+          files = []
+          for path in sorted(root.iterdir()):
+              if path.is_file():
+                  data = path.read_bytes()
+                  files.append({'name': path.name, 'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data)})
+          witness = {
+              'schema_version': '1.0.0',
+              'witness_kind': 'AEGIS_EXTERNAL_EXACT_HEAD_WITNESS_V1',
+              'epistemic_scope': 'EXTERNAL_EXACT_HEAD_RUNTIME_WITNESS_NOT_REPO_NATIVE_CI',
+              'source_repository': os.environ['SOURCE_REPOSITORY'],
+              'candidate_sha': os.environ['CANDIDATE_SHA'],
+              'expected_parent_sha': os.environ['EXPECTED_PARENT_SHA'],
+              'runner_repository': os.environ['WITNESS_REPOSITORY'],
+              'runner_run_id': os.environ['WITNESS_RUN_ID'],
+              'runner_run_attempt': os.environ['WITNESS_RUN_ATTEMPT'],
+              'files': files,
+          }
+          body = json.dumps(witness, sort_keys=True, separators=(',', ':')).encode()
+          witness['witness_root'] = hashlib.sha256(body).hexdigest()
+          (root / 'EXTERNAL_WITNESS.json').write_text(json.dumps(witness, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+          (cd "$RUNNER_TEMP/aegis-pr1-external-witness" && sha256sum * | LC_ALL=C sort > SHA256SUMS)
+
+      - name: Upload external exact-head witness
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-pr1-external-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/aegis-pr1-external-witness
+          if-no-files-found: error
+          retention-days: 90
