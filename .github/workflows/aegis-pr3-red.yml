@@ -1,4 +1,4 @@
-name: AEGIS Provider Contribution Capability Validation
+name: AEGIS Provider Contribution Skill Promotion Candidate
 
 on:
   pull_request:
@@ -9,16 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: capability-validation-${{ matrix.validation }}
-    strategy:
-      fail-fast: false
-      matrix:
-        validation: [1, 2, 3]
+  promote-candidate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
-      CANDIDATE_SHA: cc9671326bee5c347cdc3070b75a3c0fe647541d
+      CANDIDATE_SHA: 4c1f75e7d2790d851fe995684e61dbb48003ef2e
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -29,77 +24,84 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
 
-      - name: Verify exact candidate
-        working-directory: aegis
-        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-
-      - name: Install canonical validators
-        working-directory: aegis
-        run: python -m pip install --requirement harness/requirements-automaton3.txt
-
-      - name: Run provider contribution contracts
+      - name: Verify exact candidate and evidence files
         working-directory: aegis
         shell: bash
         run: |
           set -euo pipefail
-          python -m unittest -v \
-            agents.tests.test_organism_loop \
-            agents.tests.test_provider_contribution \
-            agents.tests.test_provider_session \
-            2>&1 | tee "$RUNNER_TEMP/python.log"
-          grep -q "Ran 33 tests" "$RUNNER_TEMP/python.log"
-          grep -q "OK" "$RUNNER_TEMP/python.log"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          for n in 1 2 3; do test -s "harness/evidence/provider-contribution/validation-${n}.json"; done
 
-      - name: Build and run contribution integration
-        working-directory: aegis/sovereign-omega-v2/mcp-server
+      - name: Generate narrow observed skill promotion
+        working-directory: aegis
         shell: bash
-        run: |
-          set -euo pipefail
-          npm ci
-          npm run build
-          node test/organism-contribution.mjs | tee "$RUNNER_TEMP/mcp.log"
-          grep -q 'MCP_ORGANISM_PROVIDER_CONTRIBUTION=PASS' "$RUNNER_TEMP/mcp.log"
-          grep -q 'MCP_ORGANISM_CONTENT_ADDRESSED_TEXT=PASS' "$RUNNER_TEMP/mcp.log"
-          grep -q 'MCP_ORGANISM_PRESTATE_FENCE=PASS' "$RUNNER_TEMP/mcp.log"
-
-      - name: Emit deterministic capability validation record
-        shell: bash
-        env:
-          VALIDATION_INDEX: ${{ matrix.validation }}
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib, json, os
+          import json
           from pathlib import Path
-          out = Path(os.environ['RUNNER_TEMP']) / 'capability-validation.json'
-          body = {
-              'validation_kind': 'AEGIS_CAPABILITY_VALIDATION_V1',
-              'capability': 'mcp.organism.contribute',
-              'candidate_sha': os.environ['CANDIDATE_SHA'],
-              'runner_repository': os.environ['GITHUB_REPOSITORY'],
-              'run_id': os.environ['GITHUB_RUN_ID'],
-              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
-              'validation_index': int(os.environ['VALIDATION_INDEX']),
-              'python_contracts': {'passed': 33, 'failed': 0},
-              'mcp_build': 'PASS',
-              'content_addressed_contribution': 'PASS',
-              'prestate_fence': 'PASS',
-              'authority_claim': 'NONE',
-          }
-          payload = json.dumps(body, sort_keys=True, separators=(',', ':')).encode()
-          body['record_sha256'] = hashlib.sha256(payload).hexdigest()
-          out.write_text(json.dumps(body, sort_keys=True, indent=2) + '\n')
-          print(out.read_text())
+          from harness.sdk.skill_authority import compute_registry_root, evaluate_registry
+
+          source = Path('harness/skill_tree.json')
+          tree = json.loads(source.read_text(encoding='utf-8'))
+          sid = 'organism_provider_contribution'
+          assert all(s.get('skill_id') != sid for s in tree['skills']), 'SKILL_ALREADY_EXISTS'
+          evidence = [f'harness/evidence/provider-contribution/validation-{n}.json' for n in (1,2,3)]
+          for ref in evidence:
+              record = json.loads(Path(ref).read_text(encoding='utf-8'))
+              assert record['validation_kind'] == 'AEGIS_CAPABILITY_VALIDATION_V1'
+              assert record['capability'] == 'mcp.organism.contribute'
+              assert record['candidate_sha'] == 'cc9671326bee5c347cdc3070b75a3c0fe647541d'
+              assert record['python_contracts'] == {'passed': 33, 'failed': 0}
+              assert record['mcp_build'] == 'PASS'
+              assert record['content_addressed_contribution'] == 'PASS'
+              assert record['prestate_fence'] == 'PASS'
+              assert record['authority_claim'] == 'NONE'
+          tree['skills'].append({
+              'skill_id': sid,
+              'label': 'Durable Provider Contribution Persistence',
+              'domain': 'agent_operations',
+              'tier': 'T1',
+              'declared_tier': 'T1',
+              'documentation_prior': 0.0,
+              'observation_state': 'OBSERVED',
+              'confidence': 1.0,
+              'validated_runs': 3,
+              'failure_rate': 0.0,
+              'failure_rate_observed': 0.0,
+              'recency_score': 1.0,
+              'evidence_refs': evidence,
+              'last_validated': 'external-run:32226633916@cc9671326bee5c347cdc3070b75a3c0fe647541d',
+              'description': 'Persist provider/model work as bounded content-addressed NON_AUTHORITATIVE_EVIDENCE with exact pre-state fencing; this skill does not grant verification, admission, or external-effect authority.'
+          })
+          tree['skills'].sort(key=lambda item: str(item['skill_id']))
+          root = compute_registry_root(tree)
+          tree['registry_root'] = root
+          tree['genesis_seal'] = root
+          receipt = evaluate_registry(tree, repo_root='.')
+          assert receipt.outcome == 'ADMITTED', receipt
+          out = Path('/tmp/skill_tree.promoted.json')
+          out.write_text(json.dumps(tree, ensure_ascii=False, sort_keys=True, separators=(',', ':')) + '\n', encoding='utf-8')
+          Path('/tmp/skill_promotion_receipt.json').write_text(json.dumps({
+              'candidate_parent_sha': '4c1f75e7d2790d851fe995684e61dbb48003ef2e',
+              'skill_id': sid,
+              'validated_runs': 3,
+              'observation_state': 'OBSERVED',
+              'registry_root': root,
+              'registry_receipt_hash': receipt.receipt_hash,
+              'authority_scope': 'NARROW_CAPABILITY_ONLY',
+              'broader_orchestration_promotion': 'NONE'
+          }, sort_keys=True, indent=2) + '\n')
+          print(json.dumps({'registry_root': root, 'receipt_hash': receipt.receipt_hash}, sort_keys=True))
           PY
-          sha256sum "$RUNNER_TEMP/capability-validation.json"
+          sha256sum /tmp/skill_tree.promoted.json /tmp/skill_promotion_receipt.json
 
       - uses: actions/upload-artifact@v4
         with:
-          name: provider-contribution-validation-${{ matrix.validation }}
-          path: ${{ runner.temp }}/capability-validation.json
+          name: provider-contribution-skill-promotion-candidate
+          path: |
+            /tmp/skill_tree.promoted.json
+            /tmp/skill_promotion_receipt.json
           if-no-files-found: error
           retention-days: 90
