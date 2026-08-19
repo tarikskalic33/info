@@ -71,3 +71,5 @@ jobs:
           path: ${{ runner.temp }}/pr5a-overlap
           if-no-files-found: error
           retention-days: 30
+
+# synchronize PR-5A witness after base workflow activation
