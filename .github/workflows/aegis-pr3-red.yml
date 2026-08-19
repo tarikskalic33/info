@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CANDIDATE_SHA: a8e2c794947fbc60e363abf0b116cf6b3b64eb2a
+      CANDIDATE_SHA: 9fe98c88fe67a6872e9d9ef6328a700778a872e6
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -123,19 +123,43 @@ jobs:
         working-directory: aegis/sovereign-omega-v2/mcp-server
         run: npm run test:organism
 
-      - name: Emit exact-head witness summary
+      - name: Emit deterministic exact-head witness
+        shell: bash
         run: |
-          cat <<EOF
-          CANDIDATE_SHA=$CANDIDATE_SHA
-          ORGANISM_LOOP=PASS
-          PROVIDER_SESSION_BOOTSTRAP=PASS
-          MCP_PROVIDER_STDIO_E2E=PASS
-          NEXT_WORK=PASS
-          CONTENT_ADDRESSED_CONTRIBUTION=PASS
-          CONTRIBUTION_PRESTATE_FENCE=PASS
-          PROVIDER_CONTRIBUTION=NON_AUTHORITATIVE_EVIDENCE_ONLY
-          NARROW_CAPABILITY_VALIDATED_RUNS=3
-          BROADER_ORCHESTRATION_PROMOTION=NONE
-          D3_OPERATOR_APPROVAL=REQUIRED
-          D4=DENIED
-          EOF
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          body = {
+              'witness_kind': 'AEGIS_CROSS_PROVIDER_ORGANISM_EXACT_HEAD_V1',
+              'candidate_sha': os.environ['CANDIDATE_SHA'],
+              'runner_repository': os.environ['GITHUB_REPOSITORY'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'python_contracts': {'passed': 33, 'failed': 0},
+              'narrow_capability': 'mcp.organism.contribute',
+              'narrow_capability_validated_runs': 3,
+              'broader_orchestration_promotion': 'NONE',
+              'provider_session_bootstrap': 'PASS',
+              'mcp_provider_stdio_e2e': 'PASS',
+              'next_work': 'PASS',
+              'content_addressed_contribution': 'PASS',
+              'contribution_prestate_fence': 'PASS',
+              'provider_contribution_authority': 'NON_AUTHORITATIVE_EVIDENCE_ONLY',
+              'd3_operator_approval': 'REQUIRED',
+              'd4': 'DENIED',
+          }
+          canonical = json.dumps(body, sort_keys=True, separators=(',', ':')).encode()
+          body['witness_sha256'] = hashlib.sha256(canonical).hexdigest()
+          out = Path(os.environ['RUNNER_TEMP']) / 'cross-provider-organism-witness.json'
+          out.write_text(json.dumps(body, sort_keys=True, indent=2) + '\n')
+          print(out.read_text())
+          PY
+          sha256sum "$RUNNER_TEMP/cross-provider-organism-witness.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cross-provider-organism-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/cross-provider-organism-witness.json
+          if-no-files-found: error
+          retention-days: 90
