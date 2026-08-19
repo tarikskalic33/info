@@ -20,10 +20,17 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Resolve Firebase CLI and download Firestore emulator
         shell: bash
         run: |
           set -euo pipefail
+          java -version
           FIREBASE_TOOLS_VERSION="$(npm view firebase-tools version)"
           echo "FIREBASE_TOOLS_VERSION=$FIREBASE_TOOLS_VERSION" >> "$GITHUB_ENV"
           mkdir -p firebase-project
@@ -57,6 +64,7 @@ jobs:
           cat > firestore-emulator-bundle/manifest.json <<JSON
           {
             "firebase_tools_version": "$FIREBASE_TOOLS_VERSION",
+            "java_version": "21",
             "jar_name": "$JAR_NAME",
             "jar_sha256": "$JAR_SHA256",
             "project_id": "proofline-emulator",
