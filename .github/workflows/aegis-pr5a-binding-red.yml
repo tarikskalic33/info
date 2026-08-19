@@ -1,0 +1,58 @@
+name: AEGIS PR5A Provider Binding RED
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'PR5A_WITNESS_TRIGGER_14.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+  CANDIDATE_SHA: 5e9159dfb41ed7895655d14123beb5980dc3eaa0
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
+      - name: Prove Python RED is missing production module
+        working-directory: aegis
+        shell: bash
+        run: |
+          set +e
+          python sovereign-omega-v2/python/tests/test_provider_execution_binding_pr5a.py > "$RUNNER_TEMP/python-red.log" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/python-red.log"
+          test "$rc" -ne 0
+          grep -q "No module named 'harness.sdk.provider_execution_binding'" "$RUNNER_TEMP/python-red.log"
+          echo PR5A_PYTHON_BINDING_RED=PASS
+      - name: Prove TypeScript RED is missing production module
+        working-directory: aegis/sovereign-omega-v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          set +e
+          npm run test -- test/unit/frontier-provider-evidence-binding.test.ts > "$RUNNER_TEMP/ts-red.log" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/ts-red.log"
+          test "$rc" -ne 0
+          grep -Eq "frontier-provider-evidence-binding|Failed to load url" "$RUNNER_TEMP/ts-red.log"
+          echo PR5A_TS_BINDING_RED=PASS
