@@ -27,6 +27,7 @@ jobs:
           repository: ${{ env.AEGIS_REPO }}
           ref: ${{ env.CANDIDATE_SHA }}
           path: aegis
+          fetch-depth: 0
 
       - name: Bind exact candidate and parent
         shell: bash
@@ -34,9 +35,10 @@ jobs:
           set -euo pipefail
           cd aegis
           actual="$(git rev-parse HEAD)"
-          base="$(git merge-base HEAD origin/main || true)"
+          base="$(git merge-base HEAD origin/main)"
           echo "CANDIDATE_SHA=$actual"
           echo "EXPECTED_PARENT_SHA=${EXPECTED_PARENT_SHA}"
+          echo "MERGE_BASE=$base"
           test "$actual" = "$CANDIDATE_SHA"
           test "$base" = "$EXPECTED_PARENT_SHA"
 
