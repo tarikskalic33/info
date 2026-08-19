@@ -1,5 +1,5 @@
-# AEGIS #264 Integrated Frontier + Organism Exact-Head Witness
+# AEGIS Work Claim TDD RED
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@5f331e55d5d3a3f14c99d800eefaa13178cc098e`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@559b4f15c487b4479d8e742fe5b5b5b2fd6cc93a`.
 
-Require frozen #225 lineage at `cd920379df1a23a61b969f0e52549c04bc3a91bb`, inherited Frontier Mesh/constitutional/Sensorium verification including hermetic LUT-KAN replay, 33/33 organism/provider/session contracts, Claude/Gemini/Codex shared entrypoints, persistent D3/D4 boundaries, existing MCP regressions, real shared-launcher stdio `aegis_next_work → aegis_contribute_text` PASS, credential scan PASS, and deterministic uploaded witness JSON.
+Require exact failure because the new durable work-claim API is absent. Do not treat setup/import failures as RED success.
