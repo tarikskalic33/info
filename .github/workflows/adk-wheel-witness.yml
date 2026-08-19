@@ -1,0 +1,85 @@
+name: ADK Binary Wheel Witness
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adk-wheel-witness:
+    name: python-${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Download exact ADK wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          mkdir -p wheelhouse
+          python -m pip download --no-deps --only-binary=:all: google-adk==2.6.3 -d wheelhouse
+          WHEEL="$(ls wheelhouse/google_adk-2.6.3-py3-none-any.whl)"
+          ACTUAL_SHA256="$(sha256sum "$WHEEL" | awk '{print $1}')"
+          EXPECTED_SHA256="3c53fc7885bbc00f98fe90e30474ad7ef7d1ccdc4dd7aa0be154721e61295f04"
+          test "$ACTUAL_SHA256" = "$EXPECTED_SHA256"
+          echo "ADK_WHEEL=$WHEEL" >> "$GITHUB_ENV"
+          echo "ADK_WHEEL_SHA256=$ACTUAL_SHA256" >> "$GITHUB_ENV"
+
+      - name: Install ADK and Firestore runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "$ADK_WHEEL" "google-cloud-firestore>=2.28.0,<3.0.0"
+
+      - name: Runtime import and API witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, platform
+          from importlib.metadata import version
+          from google.adk import Agent
+          from google.adk.apps.app import App
+          from google.cloud import firestore
+
+          agent = Agent(
+              name="proofline_runtime_witness",
+              model="gemini-3.5-flash",
+              instruction="Return only structured proposals; never equate authorization with effect.",
+          )
+          app = App(name="proofline_runtime_witness", root_agent=agent)
+          witness = {
+              "python": platform.python_version(),
+              "google_adk": version("google-adk"),
+              "google_cloud_firestore": version("google-cloud-firestore"),
+              "wheel_sha256": "${{ env.ADK_WHEEL_SHA256 }}",
+              "agent_class": type(agent).__name__,
+              "app_class": type(app).__name__,
+              "firestore_client_import": firestore.Client.__name__,
+              "model": agent.model,
+              "status": "PASS",
+          }
+          print(json.dumps(witness, sort_keys=True))
+          with open(f"adk-runtime-witness-{platform.python_version()}.json", "w", encoding="utf-8") as f:
+              json.dump(witness, f, sort_keys=True, indent=2)
+          PY
+
+      - name: Upload witness
+        uses: actions/upload-artifact@v4
+        with:
+          name: adk-runtime-witness-python-${{ matrix.python }}
+          path: adk-runtime-witness-*.json
+          if-no-files-found: error
