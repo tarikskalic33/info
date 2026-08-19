@@ -1,4 +1,4 @@
-name: AEGIS PR3 VerifyEffect GREEN
+name: AEGIS Organism Loop RED
 
 on:
   pull_request:
@@ -9,104 +9,28 @@ permissions:
   contents: read
 
 jobs:
-  green:
+  red:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
     env:
-      CANDIDATE_SHA: bf29570cf4ae189de93f38a9018e124c2136c687
-      EXPECTED_PARENT_SHA: 154c37a49c7b8aab7400312fba1749b3c17f0796
+      CANDIDATE_SHA: a8ecfa4a8857abdcff75aab1e7ce9c3d9485f45f
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
           repository: Aegis-Omega/AEGIS-OMEGA
           ref: ${{ env.CANDIDATE_SHA }}
-          fetch-depth: 0
           path: aegis
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify exact lineage
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git -C aegis rev-parse HEAD)" = "$CANDIDATE_SHA"
-          test "$(git -C aegis merge-base "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA")" = "$EXPECTED_PARENT_SHA"
-          echo PR3_EXACT_LINEAGE=PASS
-      - name: Install schema validator
-        run: python -m pip install jsonschema==4.23.0
-      - name: Validate EffectReceipt schema
-        working-directory: aegis
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          from jsonschema.validators import validator_for
-          p=Path('schemas/effect-receipt.v1.schema.json')
-          s=json.loads(p.read_text())
-          validator_for(s).check_schema(s)
-          required=set(s['required'])
-          assert {'effect_verification_root','verifier_policy_commitment'} <= required, required
-          print('PR3_EFFECT_RECEIPT_SCHEMA=PASS')
-          PY
-      - name: Run PR3 VerifyEffect falsification suite
+      - name: Prove organism contract is RED for intended missing module
         working-directory: aegis
         shell: bash
         run: |
-          set -euo pipefail
-          python sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py | tee "$RUNNER_TEMP/pr3.log"
-          python - <<'PY'
-          import ast
-          from pathlib import Path
-          p=Path('sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py')
-          tree=ast.parse(p.read_text())
-          count=sum(1 for node in ast.walk(tree) if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)) and node.name.startswith('test_'))
-          assert count == 15, count
-          print(f'PR3_EFFECT_VERIFIER_TEST_DEFINITIONS={count}')
-          PY
-      - name: Run inherited Automaton-3 regression suite
-        working-directory: aegis
-        shell: bash
-        run: |
-          set -euo pipefail
-          python scripts/run-automaton3-tests.py --output "$RUNNER_TEMP/summary.json" --log "$RUNNER_TEMP/tests.log"
-          python - <<'PY'
-          import json,os
-          from pathlib import Path
-          s=json.loads((Path(os.environ['RUNNER_TEMP'])/'summary.json').read_text())
-          assert s['actual_test_count']==75, s
-          assert s['return_code']==0, s
-          assert s['test_count_matches_expected'] is True, s
-          print('PR2_INHERITED_75_OF_75=PASS')
-          PY
-      - name: Verify PR3 policy and fail-closed boundaries
-        working-directory: aegis
-        run: |
-          python - <<'PY'
-          import harness.sdk.transition_receipts as tr
-          import harness.sdk.effect_verifier as ev
-          assert tr.PR3_VERIFIER_POLICY['policy_id']=='AEGIS_PR3_VERIFIER_POLICY_V1'
-          assert tr.PR3_VERIFIER_POLICY['effect_evidence_production']=='ADAPTER_BOUND_ONLY'
-          assert tr.PR3_VERIFIER_POLICY['verify_effect']=='REQUIRED'
-          assert tr.PR3_VERIFIER_POLICY['effect_receipt_production']=='VERIFIER_GATED_ONLY'
-          assert tr.PR3_VERIFIER_POLICY['complete_verification']=='UNAVAILABLE'
-          assert tr.PR3_VERIFIER_POLICY['atomic_admission']=='UNAVAILABLE'
-          assert tr.PR3_VERIFIER_POLICY['effect_bound_admission']=='UNAVAILABLE'
-          assert ev.TRUE == 'TRUE'
-          assert ev.FALSE == 'FALSE'
-          assert ev.UNKNOWN == 'UNKNOWN'
-          assert ev.ERROR == 'ERROR'
-          assert ev.MISSING == 'MISSING'
-          print('PR3_VERIFY_EFFECT_POLICY_BOUNDARY=PASS')
-          PY
-      - name: Emit GREEN summary
-        shell: bash
-        run: |
-          cat <<EOF
-          CANDIDATE_SHA=$CANDIDATE_SHA
-          EXPECTED_PARENT_SHA=$EXPECTED_PARENT_SHA
-          PR3_VERIFY_EFFECT=GREEN_IF_ALL_PREVIOUS_STEPS_PASS
-          COMPLETE_VERIFICATION=UNAVAILABLE
-          ATOMIC_ADMISSION=UNAVAILABLE
-          EFFECT_BOUND_ADMISSION=UNAVAILABLE
-          EOF
+          set +e
+          python -m unittest agents.tests.test_organism_loop > "$RUNNER_TEMP/organism-red.log" 2>&1
+          rc=$?
+          cat "$RUNNER_TEMP/organism-red.log"
+          test "$rc" -ne 0
+          grep -q "No module named 'agents.organism'" "$RUNNER_TEMP/organism-red.log"
+          echo ORGANISM_RED_INTENDED_MISSING_MODULE=PASS
