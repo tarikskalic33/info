@@ -47,11 +47,15 @@ jobs:
       - name: Math core
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/math-verification/math-contracts.test.ts test/unit/math-verification/math-aggregate.test.ts
-      - name: Coq attestation generator tests
-        working-directory: aegis/sovereign-omega-v2
-        env:
-          PYTHONPATH: python
-        run: python3 -m unittest python.tests.test_coq_attestation -v
+      - name: Install Coq 8.18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coq
+          coqc --version | tee /tmp/coq-version.txt
+          grep -q '8.18' /tmp/coq-version.txt
+      - name: Coq 8.18 RED - compile LatticeConvergence
+        working-directory: aegis/sovereign-omega-v2/formal/theories/Core
+        run: coqc LatticeConvergence.v
       - name: Typecheck
         working-directory: aegis/sovereign-omega-v2
         run: npm run typecheck
