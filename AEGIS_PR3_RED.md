@@ -1,5 +1,5 @@
-# AEGIS Provider Contribution Skill Promotion Candidate
+# AEGIS Cross-Provider Organism Exact-Head Witness
 
-Parent candidate: `Aegis-Omega/AEGIS-OMEGA@4c1f75e7d2790d851fe995684e61dbb48003ef2e`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@a8e2c794947fbc60e363abf0b116cf6b3b64eb2a`.
 
-Generate a deterministic promoted `skill_tree.json` that adds only the narrow `organism_provider_contribution` skill from the three committed validation records. Broader `orchestration_routing` authority must remain unchanged.
+Require narrow capability promotion PASS, 33/33 organism/provider/session contracts, D3 persistent operator inbox, existing MCP regressions, and real provider-session stdio `aegis_next_work → aegis_contribute_text` PASS. No broader orchestration authority promotion.
