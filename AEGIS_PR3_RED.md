@@ -1,5 +1,5 @@
-# AEGIS Work Claim TDD RED
+# AEGIS Work Claim TDD GREEN
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@5655d8e970322c2408651c58613cda30cd401206`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@db311cfc900f594dc24aa5cc842586495a43ce61`.
 
-Require assertion failure because durable claim APIs are absent, including the two-store-instance contention case. Import/setup failures do not count.
+Require 13/13 durable work-claim contracts PASS, including cross-instance contention, plus inherited 33/33 organism/provider/session contracts PASS.
