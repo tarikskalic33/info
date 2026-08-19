@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CANDIDATE_SHA: 344c386ee9753c18a658352e8a0a2b5aac6d7870
+      CANDIDATE_SHA: d2cc2a8211b23fea4c9afe24af85a55134893ae3
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -81,7 +81,7 @@ jobs:
           npm run test:resources
           npm run test:automaton3
 
-      - name: Run MCP durable contribution integration
+      - name: Run MCP durable contribution integration and provider stdio E2E
         working-directory: aegis/sovereign-omega-v2/mcp-server
         run: npm run test:organism
 
@@ -90,6 +90,7 @@ jobs:
           echo CANDIDATE_SHA=$CANDIDATE_SHA
           echo ORGANISM_LOOP=PASS
           echo PROVIDER_SESSION_BOOTSTRAP=PASS
+          echo MCP_PROVIDER_STDIO_E2E=PASS
           echo NEXT_WORK=PASS
           echo CONTENT_ADDRESSED_CONTRIBUTION=PASS
           echo CONTRIBUTION_PRESTATE_FENCE=PASS
