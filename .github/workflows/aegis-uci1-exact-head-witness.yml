@@ -39,6 +39,8 @@ jobs:
           printf 'CANDIDATE_SHA=%s\nEXPECTED_PARENT_SHA=%s\nMERGE_BASE=%s\n' "$actual" "$EXPECTED_PARENT_SHA" "$base" | tee ../uci-lineage.txt
           test "$actual" = "$CANDIDATE_SHA"
           test "$base" = "$EXPECTED_PARENT_SHA"
+          git diff --quiet "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA" -- sovereign-omega-v2/package.json sovereign-omega-v2/package-lock.json
+          echo 'UCI_DEPENDENCY_DELTA=NONE' | tee -a ../uci-lineage.txt
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -50,6 +52,15 @@ jobs:
       - name: Install exact dependencies
         working-directory: aegis/sovereign-omega-v2
         run: npm ci
+
+      - name: Capture inherited npm audit baseline
+        working-directory: aegis/sovereign-omega-v2
+        shell: bash
+        run: |
+          set +e
+          npm audit --json 2>&1 | tee ../../uci-npm-audit.json
+          echo "NPM_AUDIT_EXIT=${PIPESTATUS[0]}" | tee ../../uci-npm-audit-status.txt
+          exit 0
 
       - name: UCI-1 regression
         working-directory: aegis/sovereign-omega-v2
@@ -88,7 +99,8 @@ jobs:
             cat uci-lineage.txt
             echo "NODE_VERSION=$(node --version)"
             echo "NPM_VERSION=$(npm --version)"
-            sha256sum uci1-regression.txt uci2-tests.txt uci-typecheck.txt uci-build.txt
+            cat uci-npm-audit-status.txt
+            sha256sum uci1-regression.txt uci2-tests.txt uci-typecheck.txt uci-build.txt uci-npm-audit.json
             echo "PRODUCTION_ADMISSION=NOT_ESTABLISHED"
             echo "AGI=NOT_ESTABLISHED"
           } | tee uci-witness-summary.txt
@@ -104,6 +116,8 @@ jobs:
             uci2-tests.txt
             uci-typecheck.txt
             uci-build.txt
+            uci-npm-audit.json
+            uci-npm-audit-status.txt
             uci-witness-summary.txt
             uci-witness-summary.sha256
           if-no-files-found: error
