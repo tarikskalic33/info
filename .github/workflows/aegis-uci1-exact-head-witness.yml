@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 4cda2ae22ff103bb8f36fa0ea3e63906911a2aa0
+  CANDIDATE_SHA: a782653366bda24e61862e566e3965eade39e1e3
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -41,15 +41,12 @@ jobs:
       - name: Install
         working-directory: aegis/sovereign-omega-v2
         run: npm ci
-      - name: UCI-1 + UCI-2 regression
+      - name: UCI regression
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts
-      - name: UCI-3 runtime
+        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts test/unit/collective/provider-contribution.test.ts test/unit/collective/provider-contribution-store.test.ts test/unit/collective/provider-contribution-schema.test.ts test/vectors/uci-3-provider-contribution-vectors.test.ts
+      - name: Math disproval gate contracts
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/provider-contribution.test.ts test/unit/collective/provider-contribution-store.test.ts
-      - name: UCI-3 schemas and vectors
-        working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/provider-contribution-schema.test.ts test/vectors/uci-3-provider-contribution-vectors.test.ts
+        run: npm test -- --run test/unit/math-verification/math-contracts.test.ts
       - name: Typecheck
         working-directory: aegis/sovereign-omega-v2
         run: npm run typecheck
