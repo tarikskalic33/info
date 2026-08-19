@@ -1,4 +1,4 @@
-name: AEGIS #264 Integrated Frontier + Organism Witness
+name: AEGIS Work Claim RED
 
 on:
   pull_request:
@@ -9,13 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  exact-head:
+  red:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     env:
-      CANDIDATE_SHA: 5f331e55d5d3a3f14c99d800eefaa13178cc098e
-      ORGANISM_INTEGRATION_SHA: ec84aa32b939a0c3b14748f32704526a6f136641
-      FROZEN_225_SHA: cd920379df1a23a61b969f0e52549c04bc3a91bb
+      CANDIDATE_SHA: 559b4f15c487b4479d8e742fe5b5b5b2fd6cc93a
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -23,216 +21,20 @@ jobs:
           repository: Aegis-Omega/AEGIS-OMEGA
           ref: ${{ env.CANDIDATE_SHA }}
           path: aegis
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Verify exact integrated lineage
+      - name: Verify exact RED candidate
+        working-directory: aegis
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - name: Prove missing claim API is the RED cause
         working-directory: aegis
         shell: bash
         run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          test "$(git merge-base "$FROZEN_225_SHA" "$CANDIDATE_SHA")" = "$FROZEN_225_SHA"
-          test "$(git rev-parse "$CANDIDATE_SHA^")" = "$ORGANISM_INTEGRATION_SHA"
-          test "$(git rev-parse "$ORGANISM_INTEGRATION_SHA^")" = "31aec51c32caa2431cb94ee742c912059802568b"
-          echo EXACT_INTEGRATED_LINEAGE=PASS
-
-      - name: Install canonical Python validators
-        working-directory: aegis
-        run: python -m pip install --requirement harness/requirements-automaton3.txt
-
-      - name: Verify inherited Frontier Mesh Python surface
-        working-directory: aegis
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m py_compile agents/cognitive_pipeline_auditbound.py platform/sol/frontier/*.py
-          python -m unittest agents.tests.test_cognitive_evidence_binding -v
-          python -m unittest discover -s platform/sol/tests -p 'test_frontier_*.py' -v
-          PYTHONPATH=. python agents/tests/test_lut_kan_parity.py
-          python -m json.tool platform/sol/contracts/platform-registry.v1.json >/dev/null
-          python -m json.tool platform/sol/contracts/execution-request.v1.schema.json >/dev/null
-          python -m json.tool platform/sol/contracts/execution-result.v1.schema.json >/dev/null
-          python -m json.tool platform/sol/contracts/proof-carrying-work-order.v1.schema.json >/dev/null
-          python -m json.tool platform/sol/contracts/sse-stream-lease.v1.schema.json >/dev/null
-          python -m json.tool platform/sol/contracts/frontier-connections.v1.schema.json >/dev/null
-          echo FRONTIER_PYTHON_AND_CONTRACTS=PASS
-
-      - name: Verify constitutional bundle
-        working-directory: aegis
-        run: node scripts/verify-constitutional-bundle.mjs
-
-      - name: Validate shared Claude Gemini Codex entrypoints
-        working-directory: aegis
-        run: python scripts/validate-provider-entrypoints.py
-
-      - name: Verify narrow contribution capability only
-        working-directory: aegis
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          from harness.sdk.skill_authority import evaluate_registry
-          from harness.sdk.sovereign_execution import load_capability_registry_from_commit
-          root = Path('.').resolve()
-          tree = json.loads(Path('harness/skill_tree.json').read_text())
-          receipt = evaluate_registry(tree, repo_root=root)
-          assert receipt.outcome == 'ADMITTED', receipt
-          skill = next(s for s in tree['skills'] if s.get('skill_id') == 'organism_provider_contribution')
-          assert skill['observation_state'] == 'OBSERVED'
-          assert skill['validated_runs'] == 3
-          assert len(skill['evidence_refs']) == 3
-          broad = next(s for s in tree['skills'] if s.get('skill_id') == 'orchestration_routing')
-          assert broad['observation_state'] == 'UNOBSERVED' and broad['validated_runs'] == 0
-          registry, _, _ = load_capability_registry_from_commit(
-              repository_root=root, source_commit=os.environ['CANDIDATE_SHA'],
-              skill_tree_path='harness/skill_tree.json', capability_map_path='harness/policies/capability-map.v1.json')
-          cap = registry['mcp.organism.contribute']
-          assert cap.skill_id == 'organism_provider_contribution'
-          assert cap.observation_state == 'OBSERVED' and cap.validated_runs == 3
-          assert cap.allowed_action_classes == ('D1',)
-          assert set(cap.allowed_tools) == {'aegis_contribute', 'aegis_contribute_text'}
-          print('NARROW_CONTRIBUTION_CAPABILITY=PASS')
-          print('BROADER_ORCHESTRATION_AUTHORITY_PROMOTION=ABSENT')
-          PY
-
-      - name: Run organism contribution and provider-session contracts
-        working-directory: aegis
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m unittest -v \
-            agents.tests.test_organism_loop \
-            agents.tests.test_provider_contribution \
-            agents.tests.test_provider_session \
-            2>&1 | tee "$RUNNER_TEMP/organism.log"
-          grep -q "Ran 33 tests" "$RUNNER_TEMP/organism.log"
-          grep -q "OK" "$RUNNER_TEMP/organism.log"
-          echo ORGANISM_PROVIDER_SESSION_33_OF_33=PASS
-
-      - name: Verify persistent operator boundary
-        working-directory: aegis
-        shell: bash
-        run: |
-          set -euo pipefail
-          export AEGIS_ORGANISM_STORE="$RUNNER_TEMP/operator-boundary.json"
-          python -m agents.organism submit --id d3-1 --event deployment_event --payload '{"service":"prod"}' --consequence D3 > "$RUNNER_TEMP/d3.json"
-          python -m agents.organism submit --id d4-1 --event forbidden --payload '{}' --consequence D4 > "$RUNNER_TEMP/d4.json"
-          python -m agents.organism inbox > "$RUNNER_TEMP/inbox.json"
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          p=Path(os.environ['RUNNER_TEMP'])
-          d3=json.loads((p/'d3.json').read_text()); d4=json.loads((p/'d4.json').read_text()); inbox=json.loads((p/'inbox.json').read_text())
-          assert d3['status']=='WAITING_OPERATOR', d3
-          assert d4['status']=='DENIED', d4
-          assert [x['work_id'] for x in inbox]==['d3-1'], inbox
-          print('D3_OPERATOR_BOUNDARY=PASS')
-          print('D4_DENY=PASS')
-          PY
-
-      - name: Install Sovereign Runtime dependencies
-        working-directory: aegis/sovereign-omega-v2
-        run: npm ci
-
-      - name: Verify inherited Frontier + Sensorium runtime
-        working-directory: aegis/sovereign-omega-v2
-        run: npm run test -- test/unit/frontier-inference-gateway.test.ts test/unit/frontier-provider-transports.test.ts test/unit/frontier-stream-lease.test.ts test/unit/frontier-automaton3-verifier.test.ts test/unit/frontier-runtime.test.ts test/unit/sensorium-observation.test.ts test/unit/sensorium-vcm-bridge.test.ts test/unit/sensorium-degradation.test.ts
-
-      - name: Typecheck Sovereign Runtime
-        working-directory: aegis/sovereign-omega-v2
-        run: npm run typecheck
-
-      - name: Install and build common AEGIS MCP server
-        working-directory: aegis/sovereign-omega-v2/mcp-server
-        run: |
-          npm ci
-          npm run build
-
-      - name: Exercise Claude Gemini Codex launcher identities
-        working-directory: aegis
-        shell: bash
-        run: |
-          set -euo pipefail
-          AEGIS_CLAUDE_MODEL=claude-fixture node scripts/aegis-provider-mcp.mjs anthropic @AEGIS_CLAUDE_MODEL --describe > "$RUNNER_TEMP/claude.json"
-          AEGIS_GEMINI_MODEL=gemini-fixture node scripts/aegis-provider-mcp.mjs google @AEGIS_GEMINI_MODEL --describe > "$RUNNER_TEMP/gemini.json"
-          AEGIS_CODEX_MODEL=codex-fixture node scripts/aegis-provider-mcp.mjs openai @AEGIS_CODEX_MODEL --describe > "$RUNNER_TEMP/codex.json"
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          p=Path(os.environ['RUNNER_TEMP'])
-          for fn,provider,model in [('claude.json','anthropic','claude-fixture'),('gemini.json','google','gemini-fixture'),('codex.json','openai','codex-fixture')]:
-              x=json.loads((p/fn).read_text())
-              assert x['provider']==provider and x['model']==model, x
-              assert x['authority']=='IDENTITY_ONLY_NOT_AUTHORIZATION', x
-          print('CLAUDE_GEMINI_CODEX_SHARED_LAUNCHER=PASS')
-          PY
-
-      - name: Run MCP regressions and real provider stdio cycle
-        working-directory: aegis/sovereign-omega-v2/mcp-server
-        run: |
-          npm run test:resources
-          npm run test:automaton3
-          npm run test:organism
-
-      - name: Credential scan inherited frontier surface
-        working-directory: aegis
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          roots=[Path('platform/sol/frontier'),Path('sovereign-omega-v2/src/sensorium')]
-          files=[Path('agents/cognitive_pipeline_auditbound.py'),*sorted(Path('sovereign-omega-v2/src/api').glob('frontier-*.ts'))]
-          for root in roots:
-              files.extend(p for p in sorted(root.rglob('*')) if p.is_file() and p.suffix not in {'.md','.yml','.yaml'})
-          pats=(re.compile(r'sk-[A-Za-z0-9_-]{16,}'),re.compile(r'Bearer\s+[A-Za-z0-9._-]{16,}'),re.compile(r'''api[_-]?key\s*=\s*["'][^"']{12,}''',re.I))
-          bad=[p.as_posix() for p in sorted(set(files)) if p.is_file() and any(rx.search(p.read_text(encoding='utf-8',errors='replace')) for rx in pats)]
-          assert not bad, bad
-          print('CREDENTIAL_SCAN=PASS')
-          PY
-
-      - name: Emit integrated witness
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import hashlib,json,os
-          from pathlib import Path
-          body={
-            'witness_kind':'AEGIS_FRONTIER_ORGANISM_EXACT_HEAD_V1',
-            'candidate_sha':os.environ['CANDIDATE_SHA'],
-            'frozen_225_sha':os.environ['FROZEN_225_SHA'],
-            'runner_repository':os.environ['GITHUB_REPOSITORY'],
-            'run_id':os.environ['GITHUB_RUN_ID'],
-            'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],
-            'frontier_mesh':'PASS','constitutional_bundle':'PASS','sensorium_boundary_regressions':'PASS',
-            'python_organism_contracts':{'passed':33,'failed':0},
-            'provider_entrypoints':['anthropic/claude','google/gemini','openai/codex'],
-            'provider_session_bootstrap':'PASS','shared_provider_launcher':'PASS','mcp_provider_stdio_e2e':'PASS',
-            'next_work':'PASS','content_addressed_contribution':'PASS','contribution_prestate_fence':'PASS',
-            'provider_contribution_authority':'NON_AUTHORITATIVE_EVIDENCE_ONLY',
-            'broader_orchestration_authority_promotion':'NONE','d3_operator_approval':'REQUIRED','d4':'DENIED',
-            'production_admission':'NOT_ESTABLISHED'
-          }
-          canonical=json.dumps(body,sort_keys=True,separators=(',',':')).encode()
-          body['witness_sha256']=hashlib.sha256(canonical).hexdigest()
-          out=Path(os.environ['RUNNER_TEMP'])/'aegis-frontier-organism-witness.json'
-          out.write_text(json.dumps(body,sort_keys=True,indent=2)+'\n')
-          print(out.read_text())
-          PY
-          sha256sum "$RUNNER_TEMP/aegis-frontier-organism-witness.json"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: aegis-frontier-organism-${{ env.CANDIDATE_SHA }}
-          path: ${{ runner.temp }}/aegis-frontier-organism-witness.json
-          if-no-files-found: error
-          retention-days: 90
+          set +e
+          python -m unittest -v agents.tests.test_work_claim 2>&1 | tee "$RUNNER_TEMP/claim-red.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          test "$rc" -ne 0
+          grep -q 'WORK_CLAIM_API_MISSING:prepare_claim' "$RUNNER_TEMP/claim-red.log"
+          echo WORK_CLAIM_TDD_RED=ESTABLISHED
