@@ -1,5 +1,5 @@
 # AEGIS Work Claim TDD RED
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@559b4f15c487b4479d8e742fe5b5b5b2fd6cc93a`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@ea19dfe3565d88713bf06e0d0dd41454ddcbb273`.
 
-Require exact failure because the new durable work-claim API is absent. Do not treat setup/import failures as RED success.
+Require assertion failure only because `prepare_claim/claim_work/release_claim/record_claimed_contribution` are absent. Import/setup failures do not count.
