@@ -1,0 +1,74 @@
+name: AEGIS PR5A Exact Merge Preflight
+
+on:
+  push:
+    paths:
+      - '.github/workflows/aegis-pr5a-merge-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+  PRIMARY_SHA: fa97ecbd85525ec883e4451cf51aae2a08bf3eef
+  SECONDARY_SHA: 31aec51c32caa2431cb94ee742c912059802568b
+  EXPECTED_MERGE_BASE: 001fcb3aa92efd18a226ac5eb5b5bd6ccd0d512a
+
+jobs:
+  merge-preflight:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ env.PRIMARY_SHA }}
+          fetch-depth: 0
+          path: aegis
+
+      - name: Verify exact parents and merge base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C aegis fetch origin "$SECONDARY_SHA"
+          test "$(git -C aegis rev-parse HEAD)" = "$PRIMARY_SHA"
+          test "$(git -C aegis merge-base "$PRIMARY_SHA" "$SECONDARY_SHA")" = "$EXPECTED_MERGE_BASE"
+          echo "PR5A_EXACT_PARENT_PREFLIGHT=PASS"
+
+      - name: Perform exact no-commit merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd aegis
+          git config user.name 'AEGIS PR5A Witness'
+          git config user.email 'pr5a-witness@invalid.local'
+          git merge --no-commit --no-ff "$SECONDARY_SHA"
+          test -z "$(git diff --name-only --diff-filter=U)"
+          echo "PR5A_GIT_THREE_WAY_MERGE=PASS"
+          echo "MERGED_FILE_COUNT=$(git diff --cached --name-only | wc -l | tr -d ' ')"
+          git diff --cached --name-status
+
+      - name: Export reviewed overlap results
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd aegis
+          mkdir -p "$RUNNER_TEMP/pr5a-overlap/.github/workflows" "$RUNNER_TEMP/pr5a-overlap/harness/sdk" "$RUNNER_TEMP/pr5a-overlap/scripts"
+          for p in \
+            .github/workflows/automaton-3.yml \
+            harness/sdk/authority_client.py \
+            scripts/automaton3-authority.py \
+            scripts/run-automaton3-tests.py \
+            scripts/validate-automaton3.py
+          do
+            cp "$p" "$RUNNER_TEMP/pr5a-overlap/$p"
+            echo "OVERLAP_SHA256 $p $(sha256sum "$p" | awk '{print $1}')"
+          done
+          git write-tree | tee "$RUNNER_TEMP/pr5a-overlap/MERGED_TREE_SHA"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr5a-exact-merge-overlap
+          path: ${{ runner.temp }}/pr5a-overlap
+          if-no-files-found: error
+          retention-days: 30
