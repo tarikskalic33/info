@@ -1,7 +1,5 @@
-# AEGIS PR-3 VerifyEffect GREEN witness
+# AEGIS Organism Loop RED witness
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@bf29570cf4ae189de93f38a9018e124c2136c687`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@a8ecfa4a8857abdcff75aab1e7ce9c3d9485f45f`.
 
-Parent: `154c37a49c7b8aab7400312fba1749b3c17f0796`.
-
-Required result: PR3 VerifyEffect falsification suite 15/15 GREEN, inherited Automaton-3 75/75 GREEN, EffectReceipt schema bound to verification root and verifier-policy commitment, and CompleteVerification/AtomicAdmission/EffectBoundAdmission explicitly unavailable.
+Expected RED cause: `agents.organism` does not exist yet. The durable company-loop contract must fail for that reason before implementation.
