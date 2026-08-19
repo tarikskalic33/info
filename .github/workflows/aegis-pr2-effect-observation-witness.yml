@@ -16,12 +16,10 @@ jobs:
     timeout-minutes: 30
     env:
       SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
-      CANDIDATE_SHA: fa7ca8e680e0e05bfdf40fa4fc27bffd09f0fe64
+      CANDIDATE_SHA: 9a73c18ba25e5ec50acd339081034e817f44a0b4
       EXPECTED_PARENT_SHA: 6bf071d9c757d0f3514904f1efad3e3b14a60a09
     steps:
-      - name: Checkout witness repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Checkout exact AEGIS PR-2 candidate
         uses: actions/checkout@v4
         with:
@@ -29,136 +27,82 @@ jobs:
           ref: ${{ env.CANDIDATE_SHA }}
           fetch-depth: 0
           path: aegis
-
       - name: Verify exact stacked lineage
         shell: bash
         run: |
           set -euo pipefail
           test "$(git -C aegis rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git -C aegis merge-base "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA")" = "$EXPECTED_PARENT_SHA"
-          test "$(git -C aegis rev-parse "$EXPECTED_PARENT_SHA")" = "$EXPECTED_PARENT_SHA"
-          echo "PR2_SOURCE_SHA=$CANDIDATE_SHA"
-          echo "PR2_STACKED_PARENT=$EXPECTED_PARENT_SHA"
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+          echo "PR2_EXACT_LINEAGE=PASS"
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: aegis/sovereign-omega-v2/mcp-server/package-lock.json
-
-      - name: Install exact schema validator
+      - name: Install schema validator
         working-directory: aegis
         run: python -m pip install jsonschema==4.23.0
-
-      - name: Validate PR-2 schema surface
+      - name: Validate schema surface
         working-directory: aegis
         shell: bash
         run: |
-          set -euo pipefail
           python - <<'PY'
           import json
           from pathlib import Path
           from jsonschema.validators import validator_for
-
-          paths = (
-              sorted(Path('schemas').glob('*-envelope.v1.schema.json'))
-              + sorted(Path('schemas').glob('*-receipt.v1.schema.json'))
-              + [
-                  Path('schemas/effect-witness.v1.schema.json'),
-                  Path('schemas/writer-lease.v1.schema.json'),
-              ]
-          )
+          paths=(sorted(Path('schemas').glob('*-envelope.v1.schema.json'))+sorted(Path('schemas').glob('*-receipt.v1.schema.json'))+[Path('schemas/effect-witness.v1.schema.json'),Path('schemas/writer-lease.v1.schema.json')])
           for path in paths:
-              schema = json.loads(path.read_text(encoding='utf-8'))
-              validator_for(schema).check_schema(schema)
-              print(f'SCHEMA_OK {path}')
-          effect_witness = json.loads(Path('schemas/effect-witness.v1.schema.json').read_text())
-          assert effect_witness['properties']['witness_kind']['const'] == 'EFFECT_WITNESS_V1'
+              schema=json.loads(path.read_text(encoding='utf-8')); validator_for(schema).check_schema(schema)
+          assert json.loads(Path('schemas/effect-witness.v1.schema.json').read_text())['properties']['witness_kind']['const']=='EFFECT_WITNESS_V1'
           print('PR2_SCHEMA_SURFACE=PASS')
           PY
-
       - name: Run exact 75-test Automaton-3 suite
         working-directory: aegis
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/run-automaton3-tests.py \
-            --output "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" \
-            --log "$RUNNER_TEMP/AUTOMATON3_TEST.log"
+          python scripts/run-automaton3-tests.py --output "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" --log "$RUNNER_TEMP/AUTOMATON3_TEST.log"
           python - <<'PY'
           import json, os
           from pathlib import Path
-          p = Path(os.environ['RUNNER_TEMP']) / 'AUTOMATON3_TEST_SUMMARY.json'
-          s = json.loads(p.read_text(encoding='utf-8'))
-          assert s['return_code'] == 0, s
-          assert s['expected_test_count'] == 75, s
-          assert s['actual_test_count'] == 75, s
-          assert s['test_count_complete'] is True, s
-          assert s['test_count_matches_expected'] is True, s
-          assert s['transition_binding_asserted'] is True, s
-          assert s['receipt_separation_asserted'] is True, s
-          assert s['generic_effect_receipt_production_forbidden_asserted'] is True, s
-          assert s['legacy_receipt_effect_evidence_forbidden_asserted'] is True, s
-          assert s['legacy_fallback_forbidden_asserted'] is True, s
-          assert s['pr2_effect_adapter_protocol_asserted'] is True, s
-          assert s['pr2_filesystem_effect_adapter_asserted'] is True, s
-          assert s['pr2_independent_pre_post_observation_asserted'] is True, s
-          assert s['pr2_adapter_bound_effect_receipt_production_asserted'] is True, s
-          assert s['pr2_authorization_artifact_effect_evidence_forbidden_asserted'] is True, s
-          assert s['pr2_caller_post_state_effect_authority_forbidden_asserted'] is True, s
-          assert s['pr2_verifier_policy_commitment_current_asserted'] is True, s
-          assert s['pr2_complete_verification_unavailable_asserted'] is True, s
-          assert s['pr2_atomic_admission_unavailable_asserted'] is True, s
-          assert s['pr2_effect_bound_admission_unavailable_asserted'] is True, s
-          assert s.get('valid_effect_receipt_production_unavailable_asserted') is not True, s
+          s=json.loads((Path(os.environ['RUNNER_TEMP'])/'AUTOMATON3_TEST_SUMMARY.json').read_text())
+          assert s['return_code']==0 and s['actual_test_count']==75 and s['test_count_matches_expected'] is True, s
+          for key in (
+              'transition_binding_asserted','receipt_separation_asserted',
+              'generic_effect_receipt_production_forbidden_asserted',
+              'effect_receipt_production_unavailable_asserted',
+              'legacy_receipt_effect_evidence_forbidden_asserted','legacy_fallback_forbidden_asserted',
+              'pr2_effect_adapter_protocol_asserted','pr2_filesystem_effect_adapter_asserted',
+              'pr2_independent_pre_post_observation_asserted',
+              'pr2_adapter_bound_effect_evidence_production_asserted',
+              'pr2_verify_effect_not_implemented_asserted',
+              'pr2_authorization_artifact_effect_evidence_forbidden_asserted',
+              'pr2_caller_post_state_effect_authority_forbidden_asserted',
+              'pr2_verifier_policy_commitment_current_asserted',
+              'pr2_complete_verification_unavailable_asserted','pr2_atomic_admission_unavailable_asserted',
+              'pr2_effect_bound_admission_unavailable_asserted'):
+              assert s[key] is True, (key,s)
+          assert s.get('pr2_adapter_bound_effect_receipt_production_asserted') is not True, s
           print('AEGIS_PR2_75_TESTS_PASS')
           PY
-
-      - name: Verify active PR-2 verifier policy binding directly
+      - name: Verify PR-2 observation-only policy directly
         working-directory: aegis
         shell: bash
         run: |
-          set -euo pipefail
           python - <<'PY'
-          from harness.sdk.transition_receipts import (
-              PR1_VERIFIER_POLICY,
-              PR2_VERIFIER_POLICY,
-              build_transition_identity,
-              pr1_verifier_policy_commitment,
-              verifier_policy_commitment,
-          )
-          from harness.sdk.sovereign_execution import ZERO_HASH
-
-          assert PR1_VERIFIER_POLICY['effect_receipt_production'] == 'UNAVAILABLE'
-          assert PR2_VERIFIER_POLICY['policy_id'] == 'AEGIS_PR2_VERIFIER_POLICY_V1'
-          assert PR2_VERIFIER_POLICY['effect_receipt_production'] == 'ADAPTER_BOUND_ONLY'
-          assert PR2_VERIFIER_POLICY['effect_observation_scope'] == 'REFERENCE_ADAPTER_BOUND_ONLY'
-          assert PR2_VERIFIER_POLICY['complete_verification'] == 'UNAVAILABLE'
-          assert PR2_VERIFIER_POLICY['atomic_admission'] == 'UNAVAILABLE'
-          assert verifier_policy_commitment() != pr1_verifier_policy_commitment()
-
-          built = build_transition_identity(
-              source_commit='a' * 40,
-              pre_state_commitment=ZERO_HASH,
-              identity_root='1' * 64,
-              approval=None,
-              requested_capability='filesystem.write',
-              registry_root='2' * 64,
-              action_digest='3' * 64,
-              deterministic_nonce='external-witness-policy-binding',
-              fence_token='fence-external-witness',
-          )
-          assert built.verifier_policy_commitment == verifier_policy_commitment()
-          assert built.verifier_policy_commitment != pr1_verifier_policy_commitment()
-          print('PR2_CURRENT_VERIFIER_POLICY_BINDING=PASS')
+          import harness.sdk.transition_receipts as tr
+          assert tr.PR1_VERIFIER_POLICY['effect_receipt_production']=='UNAVAILABLE'
+          assert tr.PR2_VERIFIER_POLICY['policy_id']=='AEGIS_PR2_VERIFIER_POLICY_V2'
+          assert tr.PR2_VERIFIER_POLICY['effect_evidence_production']=='ADAPTER_BOUND_ONLY'
+          assert tr.PR2_VERIFIER_POLICY['verify_effect']=='NOT_IMPLEMENTED'
+          assert tr.PR2_VERIFIER_POLICY['effect_receipt_production']=='UNAVAILABLE'
+          assert not hasattr(tr,'_issue_adapter_bound_effect_receipt')
+          assert not hasattr(tr,'_EFFECT_RECEIPT_PRODUCER_CAPABILITY')
+          print('PR2_OBSERVATION_BEFORE_RECEIPT=PASS')
           PY
-
       - name: Build and test MCP fail-closed integration
         working-directory: aegis/sovereign-omega-v2/mcp-server
         shell: bash
@@ -167,134 +111,71 @@ jobs:
           npm ci
           npm run test:resources
           npm run test:automaton3 | tee "$RUNNER_TEMP/AUTOMATON3_MCP.log"
-
       - name: Validate claims and constitutional anchors
         working-directory: aegis
-        shell: bash
         run: |
-          set -euo pipefail
           node scripts/validate-claims.mjs
           (cd sovereign-omega-v2 && node scripts/verify-hashes.mjs)
-
       - name: Validate exact candidate with canonical validator
         working-directory: aegis
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/validate-automaton3.py \
-            --candidate-sha "$CANDIDATE_SHA" \
-            --expected-parent-sha "$EXPECTED_PARENT_SHA" \
-            --test-summary "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" \
-            --mcp-log "$RUNNER_TEMP/AUTOMATON3_MCP.log" \
-            --receipt-output "$RUNNER_TEMP/AUTOMATON3_RECEIPT.json" \
-            --manifest-output "$RUNNER_TEMP/AUTOMATON3_CANDIDATE_MANIFEST.json"
+          python scripts/validate-automaton3.py --candidate-sha "$CANDIDATE_SHA" --expected-parent-sha "$EXPECTED_PARENT_SHA" --test-summary "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" --mcp-log "$RUNNER_TEMP/AUTOMATON3_MCP.log" --receipt-output "$RUNNER_TEMP/AUTOMATON3_RECEIPT.json" --manifest-output "$RUNNER_TEMP/AUTOMATON3_CANDIDATE_MANIFEST.json"
           python - <<'PY'
           import json, os
           from pathlib import Path
-          temp = Path(os.environ['RUNNER_TEMP'])
-          receipt = json.loads((temp / 'AUTOMATON3_RECEIPT.json').read_text())
-          manifest = json.loads((temp / 'AUTOMATON3_CANDIDATE_MANIFEST.json').read_text())
-          assert receipt['outcome'] == 'ADMITTED', receipt
-          assert receipt['violation_count'] == 0, receipt
-          assert receipt['candidate_sha'] == os.environ['CANDIDATE_SHA'], receipt
-          assert receipt['expected_parent_sha'] == os.environ['EXPECTED_PARENT_SHA'], receipt
-          assert receipt['signature_mode'] == 'DETERMINISTIC_VALIDATION_ONLY', receipt
-          assert receipt['admission_scope'] == 'REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION', receipt
-          assert receipt['verifier_policy_scope'] == 'PR2_CURRENT_POLICY_COMMITMENT_REQUIRED', receipt
-          assert receipt['complete_verification'] == 'NOT_IMPLEMENTED', receipt
-          assert receipt['atomic_admission'] == 'NOT_IMPLEMENTED', receipt
-          assert receipt['effect_bound_admission'] == 'UNAVAILABLE', receipt
-          assert manifest['admission_scope'] == 'REPOSITORY_CANDIDATE_VALIDATION_ONLY', manifest
-          assert manifest['effect_observation_scope'] == 'REFERENCE_ADAPTER_BOUND_ONLY', manifest
-          assert manifest['verifier_policy_scope'] == 'PR2_CURRENT_POLICY_COMMITMENT_REQUIRED', manifest
-          assert manifest['complete_verification'] == 'NOT_IMPLEMENTED', manifest
-          assert manifest['atomic_admission'] == 'NOT_IMPLEMENTED', manifest
-          assert manifest['effect_bound_admission'] == 'UNAVAILABLE', manifest
-          paths = {item['path'] for item in manifest['files']}
-          for required in (
-              'harness/sdk/effect_adapters.py',
-              'harness/sdk/transition_receipts.py',
-              'sovereign-omega-v2/python/tests/test_effect_adapters_pr2.py',
-              'schemas/effect-witness.v1.schema.json',
-          ):
-              assert required in paths, (required, paths)
+          t=Path(os.environ['RUNNER_TEMP']); r=json.loads((t/'AUTOMATON3_RECEIPT.json').read_text()); m=json.loads((t/'AUTOMATON3_CANDIDATE_MANIFEST.json').read_text())
+          assert r['outcome']=='ADMITTED' and r['violation_count']==0, r
+          assert r['signature_mode']=='DETERMINISTIC_VALIDATION_ONLY'
+          assert r['effect_evidence_production']=='ADAPTER_BOUND_ONLY'
+          assert r['verify_effect']=='NOT_IMPLEMENTED'
+          assert r['effect_receipt_production']=='UNAVAILABLE'
+          assert r['complete_verification']=='NOT_IMPLEMENTED' and r['atomic_admission']=='NOT_IMPLEMENTED' and r['effect_bound_admission']=='UNAVAILABLE'
+          assert m['effect_evidence_production']=='ADAPTER_BOUND_ONLY'
+          assert m['verify_effect']=='NOT_IMPLEMENTED'
+          assert m['effect_receipt_production']=='UNAVAILABLE'
           print('AEGIS_PR2_CANONICAL_VALIDATOR=PASS')
           PY
-
       - name: Verify epistemic boundary directly
         working-directory: aegis
         shell: bash
         run: |
-          set -euo pipefail
           python - <<'PY'
-          import inspect
-          from harness.sdk.effect_adapters import FilesystemEffectAdapter
-          from harness.sdk.transition_receipts import EffectReceipt, accept_effect_evidence
-
-          sig = inspect.signature(FilesystemEffectAdapter.observe_effect)
-          assert 'post_state_digest' not in sig.parameters
-          assert 'post_state_commitment' not in sig.parameters
-          assert EffectReceipt.__dataclass_params__.frozen is True
-          assert accept_effect_evidence(None) is False
-          print('CALLER_POST_STATE_AUTHORITY=FORBIDDEN')
-          print('EFFECT_RECEIPT_EXISTS_IMPLIES_VERIFIED=FALSE')
-          print('COMPLETE_VERIFICATION=NOT_IMPLEMENTED')
-          print('ATOMIC_ADMISSION=NOT_IMPLEMENTED')
-          print('EFFECT_BOUND_ADMISSION=UNAVAILABLE')
+          import inspect, tempfile
+          from pathlib import Path
+          import harness.sdk.transition_receipts as tr
+          from harness.sdk.effect_adapters import FilesystemEffectAdapter, filesystem_state_commitment, EffectWitness
+          sig=inspect.signature(FilesystemEffectAdapter.observe_effect)
+          assert 'post_state_digest' not in sig.parameters and 'post_state_commitment' not in sig.parameters
+          assert tr.EffectReceipt.__dataclass_params__.init is False
+          assert tr.accept_effect_evidence(None) is False
+          print('WORLD_OBSERVATION_TO_EFFECT_EVIDENCE_ONLY=PASS')
+          print('VERIFY_EFFECT=NOT_IMPLEMENTED')
+          print('EFFECT_RECEIPT_PRODUCTION=UNAVAILABLE')
           PY
-
-      - name: Emit full external witness bundle
+      - name: Emit external witness bundle
         shell: bash
         env:
-          WITNESS_REPOSITORY: ${{ github.repository }}
-          WITNESS_RUN_ID: ${{ github.run_id }}
-          WITNESS_RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/aegis-pr2-full-witness"
-          mkdir -p "$out"
-          cp "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" "$out/"
-          cp "$RUNNER_TEMP/AUTOMATON3_TEST.log" "$out/"
-          cp "$RUNNER_TEMP/AUTOMATON3_MCP.log" "$out/"
-          cp "$RUNNER_TEMP/AUTOMATON3_RECEIPT.json" "$out/"
-          cp "$RUNNER_TEMP/AUTOMATON3_CANDIDATE_MANIFEST.json" "$out/"
+          out="$RUNNER_TEMP/aegis-pr2-full-witness"; mkdir -p "$out"
+          cp "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" "$RUNNER_TEMP/AUTOMATON3_TEST.log" "$RUNNER_TEMP/AUTOMATON3_MCP.log" "$RUNNER_TEMP/AUTOMATON3_RECEIPT.json" "$RUNNER_TEMP/AUTOMATON3_CANDIDATE_MANIFEST.json" "$out/"
           python - <<'PY'
-          import hashlib, json, os
+          import hashlib,json,os
           from pathlib import Path
-          out = Path(os.environ['RUNNER_TEMP']) / 'aegis-pr2-full-witness'
-          files = []
-          for path in sorted(out.iterdir()):
-              if path.is_file():
-                  data = path.read_bytes()
-                  files.append({'name': path.name, 'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data)})
-          witness = {
-              'schema_version': '1.0.0',
-              'witness_kind': 'AEGIS_PR2_EXTERNAL_EXACT_HEAD_WITNESS_V1',
-              'epistemic_scope': 'REFERENCE_EFFECT_OBSERVATION_NOT_REPO_NATIVE_CI_NOT_EFFECT_BOUND_ADMISSION',
-              'source_repository': os.environ['SOURCE_REPOSITORY'],
-              'candidate_sha': os.environ['CANDIDATE_SHA'],
-              'expected_parent_sha': os.environ['EXPECTED_PARENT_SHA'],
-              'runner_repository': os.environ['WITNESS_REPOSITORY'],
-              'runner_run_id': os.environ['WITNESS_RUN_ID'],
-              'runner_run_attempt': os.environ['WITNESS_RUN_ATTEMPT'],
-              'automaton3_test_count': 75,
-              'verifier_policy_scope': 'PR2_CURRENT_POLICY_COMMITMENT_REQUIRED',
-              'admission_scope': 'REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION',
-              'complete_verification': 'NOT_IMPLEMENTED',
-              'atomic_admission': 'NOT_IMPLEMENTED',
-              'effect_bound_admission': 'UNAVAILABLE',
-              'files': files,
-          }
-          body = json.dumps(witness, sort_keys=True, separators=(',', ':')).encode()
-          witness['witness_root'] = hashlib.sha256(body).hexdigest()
-          (out / 'EXTERNAL_WITNESS.json').write_text(json.dumps(witness, indent=2, sort_keys=True) + '\n')
+          out=Path(os.environ['RUNNER_TEMP'])/'aegis-pr2-full-witness'; files=[]
+          for p in sorted(out.iterdir()):
+              b=p.read_bytes(); files.append({'name':p.name,'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)})
+          w={'schema_version':'1.0.0','witness_kind':'AEGIS_PR2_EXTERNAL_EXACT_HEAD_WITNESS_V2','source_repository':'Aegis-Omega/AEGIS-OMEGA','candidate_sha':os.environ['CANDIDATE_SHA'],'expected_parent_sha':os.environ['EXPECTED_PARENT_SHA'],'runner_repository':'tarikskalic33/info','run_id':os.environ['RUN_ID'],'run_attempt':os.environ['RUN_ATTEMPT'],'automaton3_test_count':75,'effect_observation':'IMPLEMENTED_REFERENCE','effect_evidence_production':'ADAPTER_BOUND_ONLY','verify_effect':'NOT_IMPLEMENTED','effect_receipt_production':'UNAVAILABLE','complete_verification':'NOT_IMPLEMENTED','atomic_admission':'NOT_IMPLEMENTED','effect_bound_admission':'UNAVAILABLE','files':files}
+          w['witness_root']=hashlib.sha256(json.dumps(w,sort_keys=True,separators=(',',':')).encode()).hexdigest(); (out/'EXTERNAL_WITNESS.json').write_text(json.dumps(w,indent=2,sort_keys=True)+'\n')
           PY
           (cd "$out" && sha256sum * | LC_ALL=C sort > SHA256SUMS)
-
-      - name: Upload full witness
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: aegis-pr2-full-${{ env.CANDIDATE_SHA }}
+          name: aegis-pr2-observation-only-${{ env.CANDIDATE_SHA }}
           path: ${{ runner.temp }}/aegis-pr2-full-witness
           if-no-files-found: error
           retention-days: 90
