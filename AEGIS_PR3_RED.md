@@ -1,5 +1,5 @@
-# AEGIS Organism Loop GREEN witness
+# AEGIS Organism + MCP Contribution GREEN witness
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@8d6dc2fd1eb007239dff562706264ec83f54c70d`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@65416445a72c2a166afee7b178e80f2243b1066e`.
 
-Rerun after witness stderr capture fix. Required result: 11/11 durable organism-loop tests PASS plus persistent D3 operator inbox smoke PASS.
+Required result: 17/17 Python organism/provider-contribution tests PASS, persistent D3 operator inbox PASS, existing MCP resources + Automaton-3 regressions PASS, and MCP→organism contribution integration PASS.
