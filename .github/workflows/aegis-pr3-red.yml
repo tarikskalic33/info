@@ -13,7 +13,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      CANDIDATE_SHA: ec84aa32b939a0c3b14748f32704526a6f136641
+      CANDIDATE_SHA: 5f331e55d5d3a3f14c99d800eefaa13178cc098e
+      ORGANISM_INTEGRATION_SHA: ec84aa32b939a0c3b14748f32704526a6f136641
       FROZEN_225_SHA: cd920379df1a23a61b969f0e52549c04bc3a91bb
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +38,8 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git merge-base "$FROZEN_225_SHA" "$CANDIDATE_SHA")" = "$FROZEN_225_SHA"
-          test "$(git rev-parse "$CANDIDATE_SHA^")" = "31aec51c32caa2431cb94ee742c912059802568b"
+          test "$(git rev-parse "$CANDIDATE_SHA^")" = "$ORGANISM_INTEGRATION_SHA"
+          test "$(git rev-parse "$ORGANISM_INTEGRATION_SHA^")" = "31aec51c32caa2431cb94ee742c912059802568b"
           echo EXACT_INTEGRATED_LINEAGE=PASS
 
       - name: Install canonical Python validators
@@ -52,7 +54,7 @@ jobs:
           python -m py_compile agents/cognitive_pipeline_auditbound.py platform/sol/frontier/*.py
           python -m unittest agents.tests.test_cognitive_evidence_binding -v
           python -m unittest discover -s platform/sol/tests -p 'test_frontier_*.py' -v
-          python agents/tests/test_lut_kan_parity.py
+          PYTHONPATH=. python agents/tests/test_lut_kan_parity.py
           python -m json.tool platform/sol/contracts/platform-registry.v1.json >/dev/null
           python -m json.tool platform/sol/contracts/execution-request.v1.schema.json >/dev/null
           python -m json.tool platform/sol/contracts/execution-result.v1.schema.json >/dev/null
