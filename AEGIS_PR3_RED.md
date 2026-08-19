@@ -1,5 +1,5 @@
-# AEGIS Cross-Provider Organism Final Exact-Head Witness
+# AEGIS #264 Integrated Frontier + Organism Exact-Head Witness
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@93c5eadb543fbd64bc30c91ce667b4523a8ad32e`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@ec84aa32b939a0c3b14748f32704526a6f136641`.
 
-Require Claude/Gemini/Codex shared entrypoint validation, 33/33 organism/provider/session contracts, D3 persistent operator inbox, existing MCP regressions, real shared-launcher stdio `aegis_next_work → aegis_contribute_text` PASS, and deterministic uploaded witness JSON. No authority signer secrets in provider configs and no broader orchestration authority promotion.
+Require frozen #225 lineage at `cd920379df1a23a61b969f0e52549c04bc3a91bb`, inherited Frontier Mesh/constitutional/Sensorium verification, 33/33 organism/provider/session contracts, Claude/Gemini/Codex shared entrypoints, persistent D3/D4 boundaries, existing MCP regressions, real shared-launcher stdio `aegis_next_work → aegis_contribute_text` PASS, credential scan PASS, and deterministic uploaded witness JSON.
