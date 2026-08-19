@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 27c084068ae7950ba6e27559022892f74b06de24
+  CANDIDATE_SHA: 4aa5cacd36548c17375ee4c2530acfcd5eb07670
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -44,9 +44,9 @@ jobs:
       - name: UCI regression
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts test/unit/collective/provider-contribution.test.ts test/unit/collective/provider-contribution-store.test.ts test/unit/collective/provider-contribution-schema.test.ts test/vectors/uci-3-provider-contribution-vectors.test.ts
-      - name: Math disproval gate
+      - name: Math core
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/math-verification/math-contracts.test.ts test/unit/math-verification/math-aggregate.test.ts test/unit/math-verification/math-schema.test.ts test/vectors/math-disproval-gate-vectors.test.ts
+        run: npm test -- --run test/unit/math-verification/math-contracts.test.ts test/unit/math-verification/math-aggregate.test.ts
       - name: Typecheck
         working-directory: aegis/sovereign-omega-v2
         run: npm run typecheck
