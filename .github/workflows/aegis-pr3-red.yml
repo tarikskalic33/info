@@ -1,4 +1,4 @@
-name: AEGIS Work Claim RED
+name: AEGIS Work Claim GREEN
 on:
   pull_request:
     branches: [main]
@@ -6,11 +6,11 @@ on:
 permissions:
   contents: read
 jobs:
-  red:
+  green:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
-      CANDIDATE_SHA: 5655d8e970322c2408651c58613cda30cd401206
+      CANDIDATE_SHA: db311cfc900f594dc24aa5cc842586495a43ce61
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -21,20 +21,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify exact RED candidate
+      - name: Verify exact GREEN candidate
         working-directory: aegis
         run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-      - name: Prove claim and cross-instance fencing contracts are RED
+      - name: Run durable claim contracts
         working-directory: aegis
         shell: bash
         run: |
-          set +e
-          python -m unittest -v agents.tests.test_work_claim agents.tests.test_work_claim_concurrency 2>&1 | tee "$RUNNER_TEMP/claim-red.log"
-          rc=${PIPESTATUS[0]}
-          set -e
-          test "$rc" -ne 0
-          grep -q 'WORK_CLAIM_API_MISSING:prepare_claim' "$RUNNER_TEMP/claim-red.log"
-          grep -q 'WORK_CLAIM_API_MISSING:cross_instance' "$RUNNER_TEMP/claim-red.log"
-          ! grep -q 'ImportError' "$RUNNER_TEMP/claim-red.log"
-          echo WORK_CLAIM_TDD_RED=ESTABLISHED
-          echo CROSS_INSTANCE_CLAIM_TDD_RED=ESTABLISHED
+          set -euo pipefail
+          python -m unittest -v agents.tests.test_work_claim agents.tests.test_work_claim_concurrency 2>&1 | tee "$RUNNER_TEMP/claim-green.log"
+          grep -q 'Ran 13 tests' "$RUNNER_TEMP/claim-green.log"
+          grep -q '^OK$' "$RUNNER_TEMP/claim-green.log"
+          echo WORK_CLAIM_13_OF_13=PASS
+      - name: Run inherited organism contracts
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v agents.tests.test_organism_loop agents.tests.test_provider_contribution agents.tests.test_provider_session 2>&1 | tee "$RUNNER_TEMP/inherited.log"
+          grep -q 'Ran 33 tests' "$RUNNER_TEMP/inherited.log"
+          grep -q '^OK$' "$RUNNER_TEMP/inherited.log"
+          echo INHERITED_ORGANISM_33_OF_33=PASS
