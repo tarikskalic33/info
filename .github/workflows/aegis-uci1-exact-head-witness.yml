@@ -1,4 +1,4 @@
-name: AEGIS UCI-1 Exact-Head Witness
+name: AEGIS UCI Exact-Head Witness
 
 on:
   pull_request:
@@ -11,11 +11,11 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 6e6de4012c8f458ec50f09d3e2d15731318d31ce
+  CANDIDATE_SHA: 40554ce2625c6bff7eac32317e285529e57baa46
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
-  uci1-witness:
+  uci-witness:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout witness repo
@@ -36,7 +36,7 @@ jobs:
           cd aegis
           actual="$(git rev-parse HEAD)"
           base="$(git merge-base HEAD origin/main)"
-          printf 'CANDIDATE_SHA=%s\nEXPECTED_PARENT_SHA=%s\nMERGE_BASE=%s\n' "$actual" "$EXPECTED_PARENT_SHA" "$base" | tee ../uci1-lineage.txt
+          printf 'CANDIDATE_SHA=%s\nEXPECTED_PARENT_SHA=%s\nMERGE_BASE=%s\n' "$actual" "$EXPECTED_PARENT_SHA" "$base" | tee ../uci-lineage.txt
           test "$actual" = "$CANDIDATE_SHA"
           test "$base" = "$EXPECTED_PARENT_SHA"
 
@@ -51,59 +51,59 @@ jobs:
         working-directory: aegis/sovereign-omega-v2
         run: npm ci
 
-      - name: UCI-1 contract schema vector suite
+      - name: UCI-1 regression
         working-directory: aegis/sovereign-omega-v2
         shell: bash
         run: |
           set -euo pipefail
-          npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts 2>&1 | tee ../../uci1-tests.txt
+          npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts 2>&1 | tee ../../uci1-regression.txt
 
-      - name: UCI-1 vector replay second pass
+      - name: UCI-2 durable claim lease
         working-directory: aegis/sovereign-omega-v2
         shell: bash
         run: |
           set -euo pipefail
-          npm test -- --run test/vectors/uci-1-collective-work-vectors.test.ts 2>&1 | tee ../../uci1-vector-replay.txt
+          npm test -- --run test/unit/collective/provider-claim-lease.test.ts 2>&1 | tee ../../uci2-tests.txt
 
       - name: Typecheck
         working-directory: aegis/sovereign-omega-v2
         shell: bash
         run: |
           set -euo pipefail
-          npm run typecheck 2>&1 | tee ../../uci1-typecheck.txt
+          npm run typecheck 2>&1 | tee ../../uci-typecheck.txt
 
       - name: Build
         working-directory: aegis/sovereign-omega-v2
         shell: bash
         run: |
           set -euo pipefail
-          npm run build 2>&1 | tee ../../uci1-build.txt
+          npm run build 2>&1 | tee ../../uci-build.txt
 
       - name: Produce SHA-bound witness summary
         shell: bash
         run: |
           set -euo pipefail
           {
-            echo "AEGIS_UCI1_EXTERNAL_EXACT_HEAD_WITNESS=PASS"
-            cat uci1-lineage.txt
+            echo "AEGIS_UCI_EXTERNAL_EXACT_HEAD_WITNESS=PASS"
+            cat uci-lineage.txt
             echo "NODE_VERSION=$(node --version)"
             echo "NPM_VERSION=$(npm --version)"
-            sha256sum uci1-tests.txt uci1-vector-replay.txt uci1-typecheck.txt uci1-build.txt
+            sha256sum uci1-regression.txt uci2-tests.txt uci-typecheck.txt uci-build.txt
             echo "PRODUCTION_ADMISSION=NOT_ESTABLISHED"
             echo "AGI=NOT_ESTABLISHED"
-          } | tee uci1-witness-summary.txt
-          sha256sum uci1-witness-summary.txt | tee uci1-witness-summary.sha256
+          } | tee uci-witness-summary.txt
+          sha256sum uci-witness-summary.txt | tee uci-witness-summary.sha256
 
       - name: Upload witness artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aegis-uci1-exact-head-witness-${{ env.CANDIDATE_SHA }}
+          name: aegis-uci-exact-head-witness-${{ env.CANDIDATE_SHA }}
           path: |
-            uci1-lineage.txt
-            uci1-tests.txt
-            uci1-vector-replay.txt
-            uci1-typecheck.txt
-            uci1-build.txt
-            uci1-witness-summary.txt
-            uci1-witness-summary.sha256
+            uci-lineage.txt
+            uci1-regression.txt
+            uci2-tests.txt
+            uci-typecheck.txt
+            uci-build.txt
+            uci-witness-summary.txt
+            uci-witness-summary.sha256
           if-no-files-found: error
