@@ -1,0 +1,51 @@
+name: AEGIS PR-2 TDD RED Witness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_PR2_TDD_RED.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: e033a587cfce62564ebffcd2496b3e8c535f190a
+      EXPECTED_PARENT_SHA: 6bf071d9c757d0f3514904f1efad3e3b14a60a09
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact PR-2 RED candidate
+        uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: aegis
+      - name: Verify exact stacked lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git -C aegis merge-base "$EXPECTED_PARENT_SHA" "$CANDIDATE_SHA")" = "$EXPECTED_PARENT_SHA"
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove RED is the missing adapter module
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -uo pipefail
+          python sovereign-omega-v2/python/tests/test_effect_adapters_pr2.py > /tmp/pr2-red.log 2>&1
+          rc=$?
+          cat /tmp/pr2-red.log
+          test "$rc" -ne 0
+          grep -F "No module named 'harness.sdk.effect_adapters'" /tmp/pr2-red.log
+          echo 'PR2_TDD_RED=ESTABLISHED'
+          echo 'RED_CAUSE=MISSING_EFFECT_ADAPTER_MODULE'
