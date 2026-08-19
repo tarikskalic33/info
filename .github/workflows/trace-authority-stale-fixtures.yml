@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   reproduce:
@@ -18,6 +18,9 @@ jobs:
     steps:
       - name: Checkout candidate branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -50,7 +53,7 @@ jobs:
             test -z "$untracked"
             echo 'BYTE_REPRODUCTION_AGAINST_COMMITTED_FIXTURES=PASS'
           else
-            echo 'COMMITTED_FIXTURES_NOT_PRESENT_YET=ARTIFACT_ONLY_PASS'
+            echo 'COMMITTED_FIXTURES_NOT_PRESENT_YET=GENERATE_AND_COMMIT'
           fi
 
       - name: Regenerate twice and compare bytes
@@ -111,6 +114,25 @@ jobs:
 
           print('AUTHORITY_STALE_CANDIDATE_SEMANTICS=PASS')
           PY
+
+      - name: Commit generated fixtures once
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        env:
+          TARGET_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          dir='examples/authority-stale'
+          git add "$dir"/*.json
+          if git diff --cached --quiet; then
+            echo 'GENERATED_FIXTURES_ALREADY_COMMITTED=TRUE'
+            exit 0
+          fi
+          git config user.name 'trace-fixture-witness[bot]'
+          git config user.email 'trace-fixture-witness[bot]@users.noreply.github.com'
+          git commit -m 'test(trace): commit generated authority-stale fixtures'
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo 'GENERATED_FIXTURES_COMMITTED=TRUE'
 
       - name: Build review artifact
         shell: bash
