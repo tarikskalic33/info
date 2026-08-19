@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 6415ee36d12eff5215547520f26f2595031ca4a6
+  CANDIDATE_SHA: 9c167f7f96898f807673fc2275792e258dc6c1c0
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -63,7 +63,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm test -- --run test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-schema.test.ts 2>&1 | tee ../../uci2-tests.txt
+          npm test -- --run test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts 2>&1 | tee ../../uci2-tests.txt
 
       - name: Typecheck
         working-directory: aegis/sovereign-omega-v2
