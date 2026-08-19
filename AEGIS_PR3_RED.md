@@ -1,5 +1,5 @@
 # AEGIS Organism + MCP Contribution GREEN witness
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@65416445a72c2a166afee7b178e80f2243b1066e`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@74b3b01ea8f3dec393ce9bbfae4a328d306f872a`.
 
-Rerun with canonical Automaton-3 Python dependencies installed. Required result: 17/17 Python organism/provider-contribution tests PASS, persistent D3 operator inbox PASS, existing MCP resources + Automaton-3 regressions PASS, and MCP→organism contribution integration PASS.
+Required result: 33/33 Python organism/provider-contribution/provider-session tests PASS, persistent D3 operator inbox PASS, existing MCP resources + Automaton-3 regressions PASS, and durable MCP contribution integration PASS.
