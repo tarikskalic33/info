@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 3c127cfd8d8f8ee77e6f72e85bd35886c33dace9
+  CANDIDATE_SHA: a6e6f126acb52e0ecbae3dffb389af34eeed1835
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
