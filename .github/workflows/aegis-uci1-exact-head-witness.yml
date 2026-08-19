@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 18195305f971a53c10c990bf4db5a6086592733e
+  CANDIDATE_SHA: e4c46312d932e5569df42ad4b4930c7febee1884
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -20,6 +20,7 @@ jobs:
     steps:
       - name: Checkout witness repo
         uses: actions/checkout@v4
+
       - name: Checkout exact AEGIS candidate
         uses: actions/checkout@v4
         with:
@@ -27,6 +28,7 @@ jobs:
           ref: ${{ env.CANDIDATE_SHA }}
           path: aegis
           fetch-depth: 0
+
       - name: Bind exact candidate and parent
         shell: bash
         run: |
@@ -34,23 +36,74 @@ jobs:
           cd aegis
           actual="$(git rev-parse HEAD)"
           base="$(git merge-base HEAD origin/main)"
-          echo "CANDIDATE_SHA=$actual"
-          echo "EXPECTED_PARENT_SHA=${EXPECTED_PARENT_SHA}"
-          echo "MERGE_BASE=$base"
+          printf 'CANDIDATE_SHA=%s\nEXPECTED_PARENT_SHA=%s\nMERGE_BASE=%s\n' "$actual" "$EXPECTED_PARENT_SHA" "$base" | tee ../uci1-lineage.txt
           test "$actual" = "$CANDIDATE_SHA"
           test "$base" = "$EXPECTED_PARENT_SHA"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
+
       - name: Install exact dependencies
         working-directory: aegis/sovereign-omega-v2
         run: npm ci
+
       - name: UCI-1 contract schema vector suite
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts 2>&1 | tee ../../uci1-tests.txt
+
       - name: UCI-1 vector replay second pass
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/vectors/uci-1-collective-work-vectors.test.ts
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test -- --run test/vectors/uci-1-collective-work-vectors.test.ts 2>&1 | tee ../../uci1-vector-replay.txt
+
+      - name: Typecheck
+        working-directory: aegis/sovereign-omega-v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run typecheck 2>&1 | tee ../../uci1-typecheck.txt
+
+      - name: Build
+        working-directory: aegis/sovereign-omega-v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build 2>&1 | tee ../../uci1-build.txt
+
+      - name: Produce SHA-bound witness summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "AEGIS_UCI1_EXTERNAL_EXACT_HEAD_WITNESS=PASS"
+            cat uci1-lineage.txt
+            echo "NODE_VERSION=$(node --version)"
+            echo "NPM_VERSION=$(npm --version)"
+            sha256sum uci1-tests.txt uci1-vector-replay.txt uci1-typecheck.txt uci1-build.txt
+            echo "PRODUCTION_ADMISSION=NOT_ESTABLISHED"
+            echo "AGI=NOT_ESTABLISHED"
+          } | tee uci1-witness-summary.txt
+          sha256sum uci1-witness-summary.txt | tee uci1-witness-summary.sha256
+
+      - name: Upload witness artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-uci1-exact-head-witness-${{ env.CANDIDATE_SHA }}
+          path: |
+            uci1-lineage.txt
+            uci1-tests.txt
+            uci1-vector-replay.txt
+            uci1-typecheck.txt
+            uci1-build.txt
+            uci1-witness-summary.txt
+            uci1-witness-summary.sha256
+          if-no-files-found: error
