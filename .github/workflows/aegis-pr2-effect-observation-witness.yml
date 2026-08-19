@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 30
     env:
       SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
-      CANDIDATE_SHA: cfa2f5764de4a283e4b42b11444ef2ddc0198ec7
+      CANDIDATE_SHA: e3dc56f3da9156c091bfbc2067d775aa2190ac6d
       EXPECTED_PARENT_SHA: 6bf071d9c757d0f3514904f1efad3e3b14a60a09
     steps:
       - name: Checkout witness repository
@@ -161,6 +161,15 @@ jobs:
           assert receipt['candidate_sha'] == os.environ['CANDIDATE_SHA'], receipt
           assert receipt['expected_parent_sha'] == os.environ['EXPECTED_PARENT_SHA'], receipt
           assert receipt['signature_mode'] == 'GITHUB_OIDC_ATTESTATION', receipt
+          assert receipt['admission_scope'] == 'REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION', receipt
+          assert receipt['complete_verification'] == 'NOT_IMPLEMENTED', receipt
+          assert receipt['atomic_admission'] == 'NOT_IMPLEMENTED', receipt
+          assert receipt['effect_bound_admission'] == 'UNAVAILABLE', receipt
+          assert manifest['admission_scope'] == 'REPOSITORY_CANDIDATE_VALIDATION_ONLY', manifest
+          assert manifest['effect_observation_scope'] == 'REFERENCE_ADAPTER_BOUND_ONLY', manifest
+          assert manifest['complete_verification'] == 'NOT_IMPLEMENTED', manifest
+          assert manifest['atomic_admission'] == 'NOT_IMPLEMENTED', manifest
+          assert manifest['effect_bound_admission'] == 'UNAVAILABLE', manifest
           paths = {item['path'] for item in manifest['files']}
           for required in (
               'harness/sdk/effect_adapters.py',
@@ -229,6 +238,7 @@ jobs:
               'runner_run_id': os.environ['WITNESS_RUN_ID'],
               'runner_run_attempt': os.environ['WITNESS_RUN_ATTEMPT'],
               'automaton3_test_count': 75,
+              'admission_scope': 'REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION',
               'complete_verification': 'NOT_IMPLEMENTED',
               'atomic_admission': 'NOT_IMPLEMENTED',
               'effect_bound_admission': 'UNAVAILABLE',
