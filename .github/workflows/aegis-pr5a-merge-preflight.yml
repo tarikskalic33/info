@@ -1,9 +1,8 @@
 name: AEGIS PR5A Exact Merge Preflight
 
 on:
-  push:
-    paths:
-      - '.github/workflows/aegis-pr5a-merge-preflight.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
