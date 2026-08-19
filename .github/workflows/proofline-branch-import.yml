@@ -1,0 +1,84 @@
+name: Proofline Branch Snapshot Import
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.head_ref == 'proofline-fleet'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Proofline head branch
+        uses: actions/checkout@v4
+        with:
+          ref: proofline-fleet
+          fetch-depth: 0
+
+      - name: Detect staged exact snapshot
+        id: staged
+        shell: bash
+        run: |
+          if [[ -f .proofline-import/proofline-source.tar.gz.b64 ]]; then
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'present=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify staged bundle
+        if: steps.staged.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d .proofline-import/proofline-source.tar.gz.b64 > /tmp/proofline-source.tar.gz
+          printf '%s  %s\n' \
+            '5f9f872fc50d34c146aaed98322f0ebe683c718acaa7f0b9e6824c2f6f017d51' \
+            '/tmp/proofline-source.tar.gz' | sha256sum -c -
+
+      - name: Replace staging tree with exact source snapshot
+        if: steps.staged.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          tar -xzf /tmp/proofline-source.tar.gz -C .
+          python - <<'PY'
+          import hashlib, json, pathlib
+          root = pathlib.Path('.')
+          files = []
+          for p in sorted(x for x in root.rglob('*') if x.is_file() and '.git' not in x.parts):
+              files.append({
+                  'path': p.as_posix(),
+                  'sha256': hashlib.sha256(p.read_bytes()).hexdigest(),
+                  'size': p.stat().st_size,
+              })
+          witness = {
+              'source_local_commit': 'c005a6a4b4785392bc2605868ad281783eeb6446',
+              'source_local_tree': '99a2c0efe24953b99dace948e98e56ed9d7cf55e',
+              'source_bundle_sha256': '5f9f872fc50d34c146aaed98322f0ebe683c718acaa7f0b9e6824c2f6f017d51',
+              'file_count': len(files),
+              'files': files,
+          }
+          pathlib.Path('PROOFLINE_REMOTE_IMPORT_WITNESS.json').write_text(
+              json.dumps(witness, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          PY
+
+      - name: Commit replicated source
+        if: steps.staged.outputs.present == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'proofline-provenance-bot'
+          git config user.email '228550385+tarikskalic33@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat(proofline): replicate exact local snapshot c005a6a [proofline-import-complete]'
+          git push origin HEAD:proofline-fleet
+
+      - name: Already imported
+        if: steps.staged.outputs.present != 'true'
+        run: echo 'PROOFLINE_REMOTE_IMPORT=ALREADY_COMPLETE_OR_NOT_STAGED'
