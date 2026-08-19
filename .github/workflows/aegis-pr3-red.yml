@@ -1,0 +1,36 @@
+name: AEGIS PR3 RED Contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['AEGIS_PR3_RED.md']
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    env:
+      CANDIDATE_SHA: b60e1eb6d86891b54e5d81c6b2bac26d56ac0bce
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove PR3 contract is RED for the intended missing verifier
+        working-directory: aegis
+        shell: bash
+        run: |
+          set +e
+          python sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py > "$RUNNER_TEMP/red.log" 2>&1
+          rc=$?
+          cat "$RUNNER_TEMP/red.log"
+          test "$rc" -ne 0
+          grep -q "No module named 'harness.sdk.effect_verifier'" "$RUNNER_TEMP/red.log"
+          echo "PR3_RED_INTENDED_MISSING_EFFECT_VERIFIER=PASS"
