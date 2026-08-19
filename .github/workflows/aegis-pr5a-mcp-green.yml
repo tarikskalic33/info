@@ -1,0 +1,61 @@
+name: AEGIS PR5A MCP GREEN
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'PR5A_WITNESS_TRIGGER_12.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+  CANDIDATE_SHA: df980805ed04f476be6204f779c29dac36fc8f0d
+  PROVIDER_PARENT_SHA: 31aec51c32caa2431cb94ee742c912059802568b
+  VERIFICATION_PARENT_SHA: 6407db1b0c4176f67a1d7ecbb16eca77d131d87e
+
+jobs:
+  mcp-green:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: aegis
+      - name: Prove exact lineage remains intact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis merge-base "$PROVIDER_PARENT_SHA" "$CANDIDATE_SHA")" = "$PROVIDER_PARENT_SHA"
+          test "$(git -C aegis merge-base "$VERIFICATION_PARENT_SHA" "$CANDIDATE_SHA")" = "$VERIFICATION_PARENT_SHA"
+          echo PR5A_MCP_FIX_ANCESTRY=PASS
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install authority dependencies
+        working-directory: aegis
+        run: python -m pip install --disable-pip-version-check -r harness/requirements-automaton3.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/mcp-server/package-lock.json
+      - name: Run strict MCP authority response suite
+        working-directory: aegis/sovereign-omega-v2/mcp-server
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          node test/authority-response.mjs
+          node test/authority-transition-receipt.mjs
+          node test/automaton3-authority.mjs
+          npm run test:resources
+          npm run test:automaton3 | tee "$RUNNER_TEMP/mcp.log"
+          grep -q 'AUTHORITY_TRANSITION_RECEIPT_PASS' "$RUNNER_TEMP/mcp.log"
+          grep -q 'AUTOMATON3_MCP_PASS' "$RUNNER_TEMP/mcp.log"
+          echo PR5A_MCP_SCHEMA_GREEN=PASS
