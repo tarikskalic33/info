@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: a6e6f126acb52e0ecbae3dffb389af34eeed1835
+  CANDIDATE_SHA: 939988de44273a712ea4bc89ce8f4e97b591bfa3
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -50,4 +50,4 @@ jobs:
         run: npm ci
       - name: UCI-1 focused tests
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts
+        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts
