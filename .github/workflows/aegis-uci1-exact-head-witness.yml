@@ -1,7 +1,7 @@
-name: AEGIS UCI-1 Exact-Head Witness
+name: AEGIS UCI Exact-Head Witness
 
 on:
-  push:
+  pull_request:
     paths:
       - '.github/workflows/aegis-uci1-exact-head-witness.yml'
   workflow_dispatch:
@@ -11,46 +11,54 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 622faf672845138925c16c12e2f852ae2e64147b
+  CANDIDATE_SHA: 9739de2af017795d99ee758352fc7fc53010f081
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
-  uci1-witness:
+  uci-witness:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout witness repo
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Checkout exact AEGIS candidate
         uses: actions/checkout@v4
         with:
           repository: ${{ env.AEGIS_REPO }}
           ref: ${{ env.CANDIDATE_SHA }}
           path: aegis
-
+          fetch-depth: 0
       - name: Bind exact candidate and parent
         shell: bash
         run: |
           set -euo pipefail
           cd aegis
-          actual="$(git rev-parse HEAD)"
-          base="$(git merge-base HEAD origin/main || true)"
-          echo "CANDIDATE_SHA=$actual"
-          echo "EXPECTED_PARENT_SHA=${EXPECTED_PARENT_SHA}"
-          test "$actual" = "$CANDIDATE_SHA"
-          test "$base" = "$EXPECTED_PARENT_SHA"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git merge-base HEAD origin/main)" = "$EXPECTED_PARENT_SHA"
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
-
-      - name: Install exact dependencies
+      - name: Install
         working-directory: aegis/sovereign-omega-v2
         run: npm ci
-
-      - name: UCI-1 focused contract test
+      - name: UCI regression
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts
+        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts test/unit/collective/provider-contribution.test.ts test/unit/collective/provider-contribution-store.test.ts test/unit/collective/provider-contribution-schema.test.ts test/vectors/uci-3-provider-contribution-vectors.test.ts
+      - name: Math core
+        working-directory: aegis/sovereign-omega-v2
+        run: npm test -- --run test/unit/math-verification/math-contracts.test.ts test/unit/math-verification/math-aggregate.test.ts
+      - name: Install Coq 8.18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coq
+          coqc --version | tee /tmp/coq-version.txt
+          grep -q '8.18' /tmp/coq-version.txt
+      - name: Coq 8.18 RED - compile LatticeConvergence
+        working-directory: aegis/sovereign-omega-v2/formal/theories/Core
+        run: coqc LatticeConvergence.v
+      - name: Typecheck
+        working-directory: aegis/sovereign-omega-v2
+        run: npm run typecheck
+      - name: Build
+        working-directory: aegis/sovereign-omega-v2
+        run: npm run build
