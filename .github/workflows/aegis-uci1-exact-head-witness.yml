@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 4aa5cacd36548c17375ee4c2530acfcd5eb07670
+  CANDIDATE_SHA: 2b346c72084becd03ba0bc05cefcb0222d7157c3
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -47,6 +47,11 @@ jobs:
       - name: Math core
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/math-verification/math-contracts.test.ts test/unit/math-verification/math-aggregate.test.ts
+      - name: Coq attestation generator tests
+        working-directory: aegis/sovereign-omega-v2
+        env:
+          PYTHONPATH: python
+        run: python3 -m unittest python.tests.test_coq_attestation -v
       - name: Typecheck
         working-directory: aegis/sovereign-omega-v2
         run: npm run typecheck
