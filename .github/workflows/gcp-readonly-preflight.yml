@@ -57,7 +57,12 @@ jobs:
           PROJECT="${PROJECT_VAR:-${PROJECT_SECRET:-direct-hangar-w5bwk}}"
           [[ -n "$PROJECT" ]] || PROJECT="direct-hangar-w5bwk"
 
-          if [[ -n "$WIF" && -n "$SA" ]]; then
+          WIF_PRESENT=false
+          SA_PRESENT=false
+          [[ -n "$WIF" ]] && WIF_PRESENT=true
+          [[ -n "$SA" ]] && SA_PRESENT=true
+
+          if [[ "$WIF_PRESENT" == true && "$SA_PRESENT" == true ]]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
@@ -66,21 +71,20 @@ jobs:
           echo "wif_source=$WIF_SOURCE" >> "$GITHUB_OUTPUT"
           echo "sa_source=$SA_SOURCE" >> "$GITHUB_OUTPUT"
 
-          python - <<PY
-          import json
+          python - "$WIF_PRESENT" "$SA_PRESENT" "$WIF_SOURCE" "$SA_SOURCE" "$PROJECT" <<'PY'
+          import json, sys
+          wif_present = sys.argv[1] == 'true'
+          sa_present = sys.argv[2] == 'true'
           json.dump({
-            "credential_mode": "WIF",
-            "wif_present": ${WIF:+true}${WIF:-false},
-            "service_account_present": ${SA:+true}${SA:-false},
-            "wif_source": "$WIF_SOURCE",
-            "service_account_source": "$SA_SOURCE",
-            "target_project": "$PROJECT",
-            "mutation_performed": False,
-          }, open("gcp-preflight/credential-surface.json", "w"), indent=2, sort_keys=True)
+            'credential_mode': 'WIF',
+            'wif_present': wif_present,
+            'service_account_present': sa_present,
+            'wif_source': sys.argv[3],
+            'service_account_source': sys.argv[4],
+            'target_project': sys.argv[5],
+            'mutation_performed': False,
+          }, open('gcp-preflight/credential-surface.json', 'w'), indent=2, sort_keys=True)
           PY
-
-          if [[ -n "$WIF" ]]; then printf '%s' "$WIF" > "$RUNNER_TEMP/wif.txt"; fi
-          if [[ -n "$SA" ]]; then printf '%s' "$SA" > "$RUNNER_TEMP/sa.txt"; fi
 
       - name: Credential surface missing
         if: steps.surface.outputs.ready != 'true'
@@ -117,12 +121,11 @@ jobs:
             name="$1"; shift
             if "$@" >"gcp-preflight/${name}.out" 2>"gcp-preflight/${name}.err"; then
               printf '%s=PASS\n' "$name"
-              return 0
             else
               rc=$?
               printf '%s=FAIL_RC_%s\n' "$name" "$rc"
-              return 0
             fi
+            return 0
           }
 
           run_probe project_describe gcloud projects describe "$PROJECT" --format=json
@@ -133,7 +136,7 @@ jobs:
           run_probe storage_buckets gcloud storage buckets list --project "$PROJECT" --format=json
 
           python - <<'PY'
-          import json, pathlib, re
+          import json, pathlib
           root = pathlib.Path('gcp-preflight')
           statuses = {}
           for err in root.glob('*.err'):
