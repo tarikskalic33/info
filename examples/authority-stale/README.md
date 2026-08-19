@@ -4,6 +4,8 @@ This directory is a **non-normative candidate fixture set** for `agentrust-io/tr
 
 It does **not** propose a schema diff or normative `verification.md` language. The goal is to give maintainers deterministic bytes that can test the eventual v1.0 authority-context semantics the day the schema/editorial decision lands.
 
+The generated JSON fixtures are committed beside the generator. CI must now regenerate them and prove byte-for-byte equality; a changed generator or hand-edited fixture must therefore fail closed rather than drift silently.
+
 ## Maintainer-requested boundary
 
 The corpus tests the proposition:
