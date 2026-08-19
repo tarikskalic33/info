@@ -1,0 +1,38 @@
+name: AEGIS PR4 Receipt Binding RED
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/aegis-pr4-binding-red.yml'
+      - 'AEGIS_PR4_BINDING_RED.md'
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    env:
+      CANDIDATE_SHA: 094ed852529335c41e0b9d94ff11982d01fdf2f8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove forged receipt metadata currently bypasses CompleteVerification
+        working-directory: aegis
+        shell: bash
+        run: |
+          set +e
+          python sovereign-omega-v2/python/tests/test_complete_verifier_pr4_receipt_binding.py > "$RUNNER_TEMP/red.log" 2>&1
+          rc=$?
+          cat "$RUNNER_TEMP/red.log"
+          test "$rc" -ne 0
+          grep -q "FAILED (failures=4)" "$RUNNER_TEMP/red.log"
+          echo "PR4_RECEIPT_BINDING_RED=PASS"
