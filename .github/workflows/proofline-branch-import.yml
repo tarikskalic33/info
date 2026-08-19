@@ -19,22 +19,22 @@ jobs:
           ref: proofline-fleet
           fetch-depth: 0
 
-      - name: Detect staged exact snapshot
+      - name: Detect complete staged snapshot
         id: staged
         shell: bash
         run: |
-          if [[ -f .proofline-import/proofline-source.tar.gz.b64 ]]; then
+          if [[ -f .proofline-import/READY ]] && compgen -G '.proofline-import/chunks/part-*' >/dev/null; then
             echo 'present=true' >> "$GITHUB_OUTPUT"
           else
             echo 'present=false' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Verify staged bundle
+      - name: Reassemble and verify staged bundle
         if: steps.staged.outputs.present == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .proofline-import/proofline-source.tar.gz.b64 > /tmp/proofline-source.tar.gz
+          cat .proofline-import/chunks/part-* | tr -d '\r\n' | base64 -d > /tmp/proofline-source.tar.gz
           printf '%s  %s\n' \
             '5f9f872fc50d34c146aaed98322f0ebe683c718acaa7f0b9e6824c2f6f017d51' \
             '/tmp/proofline-source.tar.gz' | sha256sum -c -
@@ -79,6 +79,6 @@ jobs:
           git commit -m 'feat(proofline): replicate exact local snapshot c005a6a [proofline-import-complete]'
           git push origin HEAD:proofline-fleet
 
-      - name: Already imported
+      - name: Await complete staging or report already imported
         if: steps.staged.outputs.present != 'true'
-        run: echo 'PROOFLINE_REMOTE_IMPORT=ALREADY_COMPLETE_OR_NOT_STAGED'
+        run: echo 'PROOFLINE_REMOTE_IMPORT=WAITING_FOR_READY_OR_ALREADY_COMPLETE'
