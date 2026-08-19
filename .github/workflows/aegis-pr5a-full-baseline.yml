@@ -1,0 +1,183 @@
+name: AEGIS PR5A Full Baseline
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'PR5A_WITNESS_TRIGGER_11.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+  CANDIDATE_SHA: 319c2262fbfbd15af5752e6bdbf4b1d464593443
+  PROVIDER_PARENT_SHA: 31aec51c32caa2431cb94ee742c912059802568b
+  VERIFICATION_PARENT_SHA: 6407db1b0c4176f67a1d7ecbb16eca77d131d87e
+  PRIMARY_PARENT_SHA: fa97ecbd85525ec883e4451cf51aae2a08bf3eef
+
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SOURCE_REPOSITORY }}
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+          path: aegis
+
+      - name: Prove exact two-lineage ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git -C aegis merge-base "$PROVIDER_PARENT_SHA" "$CANDIDATE_SHA")" = "$PROVIDER_PARENT_SHA"
+          test "$(git -C aegis merge-base "$VERIFICATION_PARENT_SHA" "$CANDIDATE_SHA")" = "$VERIFICATION_PARENT_SHA"
+          echo PR5A_TWO_EXACT_LINEAGES=PASS
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        working-directory: aegis
+        run: python -m pip install --disable-pip-version-check -r harness/requirements-automaton3.txt jsonschema==4.23.0
+
+      - name: Compile integrated surfaces
+        working-directory: aegis
+        run: |
+          python -m py_compile harness/sdk/authority_client.py harness/sdk/transition_receipts.py harness/sdk/effect_adapters.py harness/sdk/effect_verifier.py harness/sdk/complete_verifier.py
+          python -m py_compile scripts/automaton3-authority.py scripts/run-automaton3-tests.py scripts/validate-automaton3.py platform/sol/frontier/*.py agents/cognitive_pipeline_auditbound.py
+
+      - name: Run PR264 Python regressions
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest agents.tests.test_cognitive_evidence_binding -v |& tee "$RUNNER_TEMP/cognitive.log"
+          python -m unittest discover -s platform/sol/tests -p 'test_frontier_*.py' -v |& tee "$RUNNER_TEMP/frontier-python.log"
+          PYTHONPATH=. python agents/tests/test_lut_kan_parity.py | tee "$RUNNER_TEMP/lut-kan.log"
+
+      - name: Run constitutional bundle
+        working-directory: aegis
+        run: node scripts/verify-constitutional-bundle.mjs | tee "$RUNNER_TEMP/constitutional.log"
+
+      - name: Run integrated Automaton3 matrix
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/run-automaton3-tests.py --output "$RUNNER_TEMP/automaton3-summary.json" --log "$RUNNER_TEMP/automaton3.log"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          s=json.loads((Path(os.environ['RUNNER_TEMP'])/'automaton3-summary.json').read_text())
+          assert s['return_code']==0,s
+          assert s['observed_test_count']==115,s
+          assert s['test_count_matches_expected'] is True,s
+          assert s['receipt_separation_asserted'] is True,s
+          assert s['pr2_adapter_bound_effect_evidence_production_asserted'] is True,s
+          print('PR5A_INTEGRATED_AUTOMATON3_115_OF_115=PASS')
+          PY
+
+      - name: Run VerifyEffect and CompleteVerification regressions
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py |& tee "$RUNNER_TEMP/pr3.log"
+          python sovereign-omega-v2/python/tests/test_complete_verifier_pr4.py |& tee "$RUNNER_TEMP/pr4.log"
+          python sovereign-omega-v2/python/tests/test_complete_verifier_pr4_receipt_binding.py |& tee "$RUNNER_TEMP/pr4-binding.log"
+
+      - name: Validate integrated schemas
+        working-directory: aegis
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema.validators import validator_for
+          names=['authority-decision-receipt.v1.schema.json','mutation-receipt.v1.schema.json','transition-identity-envelope.v1.schema.json','decision-receipt.v1.schema.json','execution-receipt.v1.schema.json','effect-witness.v1.schema.json','effect-receipt.v1.schema.json','complete-verification-result.v1.schema.json','cross-runtime-receipt-envelope.v1.schema.json','receipt-trust-registry.v1.schema.json']
+          for name in names:
+              p=Path('schemas')/name; s=json.loads(p.read_text()); validator_for(s).check_schema(s)
+          print('PR5A_INTEGRATED_SCHEMAS=PASS')
+          PY
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: aegis/sovereign-omega-v2/package-lock.json
+
+      - name: Run frontier and Sensorium TypeScript regressions
+        working-directory: aegis/sovereign-omega-v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run test -- test/unit/frontier-inference-gateway.test.ts test/unit/frontier-provider-transports.test.ts test/unit/frontier-stream-lease.test.ts test/unit/frontier-automaton3-verifier.test.ts test/unit/frontier-runtime.test.ts test/unit/sensorium-observation.test.ts test/unit/sensorium-vcm-bridge.test.ts test/unit/sensorium-degradation.test.ts | tee "$RUNNER_TEMP/vitest.log"
+          grep -q '79 passed' "$RUNNER_TEMP/vitest.log" || grep -q 'Tests.*79 passed' "$RUNNER_TEMP/vitest.log"
+          npm run typecheck | tee "$RUNNER_TEMP/typecheck.log"
+
+      - name: Run MCP fail-closed integration
+        working-directory: aegis/sovereign-omega-v2/mcp-server
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run test:resources
+          npm run test:automaton3 | tee "$RUNNER_TEMP/mcp.log"
+          grep -q 'AUTOMATON3_MCP_PASS' "$RUNNER_TEMP/mcp.log"
+
+      - name: Run repository-candidate validator
+        working-directory: aegis
+        run: |
+          python scripts/validate-automaton3.py --candidate-sha "$CANDIDATE_SHA" --expected-parent-sha "$PRIMARY_PARENT_SHA" --test-summary "$RUNNER_TEMP/automaton3-summary.json" --mcp-log "$RUNNER_TEMP/mcp.log" --receipt-output "$RUNNER_TEMP/automaton3-receipt.json" --manifest-output "$RUNNER_TEMP/automaton3-manifest.json" --require-oidc
+
+      - name: Validate claims, frozen hashes, and credentials
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/validate-claims.mjs | tee "$RUNNER_TEMP/claims.log"
+          (cd sovereign-omega-v2 && node scripts/verify-hashes.mjs) | tee "$RUNNER_TEMP/hashes.log"
+          python - <<'PY' | tee "$RUNNER_TEMP/credential-scan.log"
+          from pathlib import Path
+          import re
+          roots=[Path('platform/sol/frontier'),Path('sovereign-omega-v2/src/sensorium')]
+          files=[Path('agents/cognitive_pipeline_auditbound.py'),*sorted(Path('sovereign-omega-v2/src/api').glob('frontier-*.ts'))]
+          for root in roots: files.extend(p for p in sorted(root.rglob('*')) if p.is_file() and p.suffix not in {'.md','.yml','.yaml'})
+          patterns=(re.compile(r'sk-[A-Za-z0-9_-]{16,}'),re.compile(r'Bearer\s+[A-Za-z0-9._-]{16,}'),re.compile(r'''api[_-]?key\s*=\s*["'][^"']{12,}''',re.I))
+          bad=[p.as_posix() for p in sorted(set(files)) if p.is_file() and any(x.search(p.read_text(encoding='utf-8',errors='replace')) for x in patterns)]
+          assert not bad,bad
+          print('CREDENTIAL_SCAN=PASS')
+          PY
+
+      - name: Emit exact-head baseline witness
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/pr5a-full-baseline"; mkdir -p "$out"
+          for f in cognitive.log frontier-python.log lut-kan.log constitutional.log automaton3-summary.json automaton3.log pr3.log pr4.log pr4-binding.log vitest.log typecheck.log mcp.log automaton3-receipt.json automaton3-manifest.json claims.log hashes.log credential-scan.log; do cp "$RUNNER_TEMP/$f" "$out/$f"; done
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'pr5a-full-baseline'; files=[]
+          for p in sorted(out.iterdir()):
+              b=p.read_bytes(); files.append({'name':p.name,'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)})
+          w={'schema_version':'1.0.0','witness_kind':'AEGIS_PR5A_FULL_BASELINE_EXTERNAL_EXACT_HEAD_WITNESS_V1','candidate_sha':os.environ['CANDIDATE_SHA'],'provider_parent_sha':os.environ['PROVIDER_PARENT_SHA'],'verification_parent_sha':os.environ['VERIFICATION_PARENT_SHA'],'run_id':os.environ['RUN_ID'],'two_exact_lineages':'PASS','integrated_automaton3':'115_OF_115_PASS','provider_output_authority':'FORBIDDEN','production_admission':'NOT_ESTABLISHED','agi':'NOT_ESTABLISHED','files':files}
+          w['witness_root']=hashlib.sha256(json.dumps(w,sort_keys=True,separators=(',',':')).encode()).hexdigest(); (out/'EXTERNAL_WITNESS.json').write_text(json.dumps(w,indent=2,sort_keys=True)+'\n'); print('PR5A_FULL_BASELINE_WITNESS_ROOT='+w['witness_root'])
+          PY
+          (cd "$out" && sha256sum * | LC_ALL=C sort > SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aegis-pr5a-full-baseline-${{ env.CANDIDATE_SHA }}
+          path: ${{ runner.temp }}/pr5a-full-baseline
+          if-no-files-found: error
+          retention-days: 90
