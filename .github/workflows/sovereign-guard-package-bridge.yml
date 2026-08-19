@@ -1,0 +1,54 @@
+name: Sovereign Guard Package Bridge
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Pack exact Sovereign Guard release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sovereign-guard-bridge
+          cd sovereign-guard-bridge
+          npm pack sovereign-guard@1.0.0 --json > pack.json
+          TARBALL="$(node -e "const x=require('./pack.json'); process.stdout.write(x[0].filename)")"
+          sha256sum "$TARBALL" > TARBALL_SHA256
+          mkdir extracted
+          tar -xzf "$TARBALL" -C extracted
+          cp extracted/package/package.json package.json
+          if [[ -f extracted/package/README.md ]]; then cp extracted/package/README.md README.md; fi
+
+      - name: Install and capture CLI help only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sg
+          cd /tmp/sg
+          npm init -y >/dev/null
+          npm install --ignore-scripts sovereign-guard@1.0.0 >/dev/null
+          npx sovereign-guard --help > "$GITHUB_WORKSPACE/sovereign-guard-bridge/CLI_HELP.txt"
+          npm ls --all --json > "$GITHUB_WORKSPACE/sovereign-guard-bridge/npm-tree.json"
+
+      - name: Upload bridge artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovereign-guard-package-bridge
+          path: sovereign-guard-bridge/
+          if-no-files-found: error
