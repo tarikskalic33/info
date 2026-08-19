@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      CANDIDATE_SHA: ea19dfe3565d88713bf06e0d0dd41454ddcbb273
+      CANDIDATE_SHA: 5655d8e970322c2408651c58613cda30cd401206
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -24,15 +24,17 @@ jobs:
       - name: Verify exact RED candidate
         working-directory: aegis
         run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-      - name: Prove missing claim API is the RED cause
+      - name: Prove claim and cross-instance fencing contracts are RED
         working-directory: aegis
         shell: bash
         run: |
           set +e
-          python -m unittest -v agents.tests.test_work_claim 2>&1 | tee "$RUNNER_TEMP/claim-red.log"
+          python -m unittest -v agents.tests.test_work_claim agents.tests.test_work_claim_concurrency 2>&1 | tee "$RUNNER_TEMP/claim-red.log"
           rc=${PIPESTATUS[0]}
           set -e
           test "$rc" -ne 0
           grep -q 'WORK_CLAIM_API_MISSING:prepare_claim' "$RUNNER_TEMP/claim-red.log"
+          grep -q 'WORK_CLAIM_API_MISSING:cross_instance' "$RUNNER_TEMP/claim-red.log"
           ! grep -q 'ImportError' "$RUNNER_TEMP/claim-red.log"
           echo WORK_CLAIM_TDD_RED=ESTABLISHED
+          echo CROSS_INSTANCE_CLAIM_TDD_RED=ESTABLISHED
