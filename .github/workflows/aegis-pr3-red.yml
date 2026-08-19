@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m unittest -v agents.tests.test_organism_loop | tee "$RUNNER_TEMP/organism-green.log"
+          python -m unittest -v agents.tests.test_organism_loop 2>&1 | tee "$RUNNER_TEMP/organism-green.log"
           grep -q "Ran 11 tests" "$RUNNER_TEMP/organism-green.log"
           grep -q "OK" "$RUNNER_TEMP/organism-green.log"
           echo ORGANISM_LOOP_11_OF_11=PASS
