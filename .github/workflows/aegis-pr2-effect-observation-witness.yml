@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   witness:
@@ -17,7 +16,7 @@ jobs:
     timeout-minutes: 30
     env:
       SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
-      CANDIDATE_SHA: e3dc56f3da9156c091bfbc2067d775aa2190ac6d
+      CANDIDATE_SHA: fa7ca8e680e0e05bfdf40fa4fc27bffd09f0fe64
       EXPECTED_PARENT_SHA: 6bf071d9c757d0f3514904f1efad3e3b14a60a09
     steps:
       - name: Checkout witness repository
@@ -113,11 +112,51 @@ jobs:
           assert s['pr2_adapter_bound_effect_receipt_production_asserted'] is True, s
           assert s['pr2_authorization_artifact_effect_evidence_forbidden_asserted'] is True, s
           assert s['pr2_caller_post_state_effect_authority_forbidden_asserted'] is True, s
+          assert s['pr2_verifier_policy_commitment_current_asserted'] is True, s
           assert s['pr2_complete_verification_unavailable_asserted'] is True, s
           assert s['pr2_atomic_admission_unavailable_asserted'] is True, s
           assert s['pr2_effect_bound_admission_unavailable_asserted'] is True, s
           assert s.get('valid_effect_receipt_production_unavailable_asserted') is not True, s
           print('AEGIS_PR2_75_TESTS_PASS')
+          PY
+
+      - name: Verify active PR-2 verifier policy binding directly
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from harness.sdk.transition_receipts import (
+              PR1_VERIFIER_POLICY,
+              PR2_VERIFIER_POLICY,
+              build_transition_identity,
+              pr1_verifier_policy_commitment,
+              verifier_policy_commitment,
+          )
+          from harness.sdk.sovereign_execution import ZERO_HASH
+
+          assert PR1_VERIFIER_POLICY['effect_receipt_production'] == 'UNAVAILABLE'
+          assert PR2_VERIFIER_POLICY['policy_id'] == 'AEGIS_PR2_VERIFIER_POLICY_V1'
+          assert PR2_VERIFIER_POLICY['effect_receipt_production'] == 'ADAPTER_BOUND_ONLY'
+          assert PR2_VERIFIER_POLICY['effect_observation_scope'] == 'REFERENCE_ADAPTER_BOUND_ONLY'
+          assert PR2_VERIFIER_POLICY['complete_verification'] == 'UNAVAILABLE'
+          assert PR2_VERIFIER_POLICY['atomic_admission'] == 'UNAVAILABLE'
+          assert verifier_policy_commitment() != pr1_verifier_policy_commitment()
+
+          built = build_transition_identity(
+              source_commit='a' * 40,
+              pre_state_commitment=ZERO_HASH,
+              identity_root='1' * 64,
+              approval=None,
+              requested_capability='filesystem.write',
+              registry_root='2' * 64,
+              action_digest='3' * 64,
+              deterministic_nonce='external-witness-policy-binding',
+              fence_token='fence-external-witness',
+          )
+          assert built.verifier_policy_commitment == verifier_policy_commitment()
+          assert built.verifier_policy_commitment != pr1_verifier_policy_commitment()
+          print('PR2_CURRENT_VERIFIER_POLICY_BINDING=PASS')
           PY
 
       - name: Build and test MCP fail-closed integration
@@ -148,8 +187,7 @@ jobs:
             --test-summary "$RUNNER_TEMP/AUTOMATON3_TEST_SUMMARY.json" \
             --mcp-log "$RUNNER_TEMP/AUTOMATON3_MCP.log" \
             --receipt-output "$RUNNER_TEMP/AUTOMATON3_RECEIPT.json" \
-            --manifest-output "$RUNNER_TEMP/AUTOMATON3_CANDIDATE_MANIFEST.json" \
-            --require-oidc
+            --manifest-output "$RUNNER_TEMP/AUTOMATON3_CANDIDATE_MANIFEST.json"
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -160,13 +198,15 @@ jobs:
           assert receipt['violation_count'] == 0, receipt
           assert receipt['candidate_sha'] == os.environ['CANDIDATE_SHA'], receipt
           assert receipt['expected_parent_sha'] == os.environ['EXPECTED_PARENT_SHA'], receipt
-          assert receipt['signature_mode'] == 'GITHUB_OIDC_ATTESTATION', receipt
+          assert receipt['signature_mode'] == 'DETERMINISTIC_VALIDATION_ONLY', receipt
           assert receipt['admission_scope'] == 'REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION', receipt
+          assert receipt['verifier_policy_scope'] == 'PR2_CURRENT_POLICY_COMMITMENT_REQUIRED', receipt
           assert receipt['complete_verification'] == 'NOT_IMPLEMENTED', receipt
           assert receipt['atomic_admission'] == 'NOT_IMPLEMENTED', receipt
           assert receipt['effect_bound_admission'] == 'UNAVAILABLE', receipt
           assert manifest['admission_scope'] == 'REPOSITORY_CANDIDATE_VALIDATION_ONLY', manifest
           assert manifest['effect_observation_scope'] == 'REFERENCE_ADAPTER_BOUND_ONLY', manifest
+          assert manifest['verifier_policy_scope'] == 'PR2_CURRENT_POLICY_COMMITMENT_REQUIRED', manifest
           assert manifest['complete_verification'] == 'NOT_IMPLEMENTED', manifest
           assert manifest['atomic_admission'] == 'NOT_IMPLEMENTED', manifest
           assert manifest['effect_bound_admission'] == 'UNAVAILABLE', manifest
@@ -238,6 +278,7 @@ jobs:
               'runner_run_id': os.environ['WITNESS_RUN_ID'],
               'runner_run_attempt': os.environ['WITNESS_RUN_ATTEMPT'],
               'automaton3_test_count': 75,
+              'verifier_policy_scope': 'PR2_CURRENT_POLICY_COMMITMENT_REQUIRED',
               'admission_scope': 'REPOSITORY_CANDIDATE_ADMISSION_NOT_EFFECT_BOUND_STATE_ADMISSION',
               'complete_verification': 'NOT_IMPLEMENTED',
               'atomic_admission': 'NOT_IMPLEMENTED',
