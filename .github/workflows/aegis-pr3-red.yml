@@ -1,4 +1,4 @@
-name: AEGIS Organism Loop GREEN
+name: AEGIS Organism + MCP Contribution GREEN
 
 on:
   pull_request:
@@ -11,8 +11,9 @@ permissions:
 jobs:
   green:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
-      CANDIDATE_SHA: 8d6dc2fd1eb007239dff562706264ec83f54c70d
+      CANDIDATE_SHA: 65416445a72c2a166afee7b178e80f2243b1066e
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -23,21 +24,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run organism contract
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verify exact candidate
+        working-directory: aegis
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+
+      - name: Run durable organism and provider contribution contracts
         working-directory: aegis
         shell: bash
         run: |
           set -euo pipefail
-          python -m unittest -v agents.tests.test_organism_loop 2>&1 | tee "$RUNNER_TEMP/organism-green.log"
-          grep -q "Ran 11 tests" "$RUNNER_TEMP/organism-green.log"
+          python -m unittest -v agents.tests.test_organism_loop agents.tests.test_provider_contribution 2>&1 | tee "$RUNNER_TEMP/organism-green.log"
+          grep -q "Ran 17 tests" "$RUNNER_TEMP/organism-green.log"
           grep -q "OK" "$RUNNER_TEMP/organism-green.log"
-          echo ORGANISM_LOOP_11_OF_11=PASS
-      - name: Smoke CLI persistence and operator gate
+          echo ORGANISM_AND_PROVIDER_CONTRIBUTION_17_OF_17=PASS
+
+      - name: Smoke persistent D3 operator inbox
         working-directory: aegis
         shell: bash
         run: |
           set -euo pipefail
-          export AEGIS_ORGANISM_STORE="$RUNNER_TEMP/organism.json"
+          export AEGIS_ORGANISM_STORE="$RUNNER_TEMP/organism-d3.json"
           python -m agents.organism submit --id d3-1 --event deployment_event --payload '{"service":"prod"}' --consequence D3 > "$RUNNER_TEMP/submit.json"
           python -m agents.organism inbox > "$RUNNER_TEMP/inbox.json"
           python - <<'PY'
@@ -50,3 +60,28 @@ jobs:
           assert [x['work_id'] for x in inbox]==['d3-1'], inbox
           print('ORGANISM_D3_PERSISTENT_INBOX=PASS')
           PY
+
+      - name: Install and build existing AEGIS MCP server
+        working-directory: aegis/sovereign-omega-v2/mcp-server
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run existing MCP regression surface
+        working-directory: aegis/sovereign-omega-v2/mcp-server
+        run: |
+          npm run test:resources
+          npm run test:automaton3
+
+      - name: Run MCP to organism provider-contribution integration
+        working-directory: aegis/sovereign-omega-v2/mcp-server
+        run: npm run test:organism
+
+      - name: Emit witness summary
+        run: |
+          echo CANDIDATE_SHA=$CANDIDATE_SHA
+          echo ORGANISM_LOOP=PASS_IF_ALL_PREVIOUS_STEPS_PASS
+          echo PROVIDER_CONTRIBUTION=NON_AUTHORITATIVE_EVIDENCE_ONLY
+          echo MCP_COMMON_ORGAN=PASS_IF_ALL_PREVIOUS_STEPS_PASS
+          echo D3_OPERATOR_APPROVAL=REQUIRED
+          echo D4=DENIED
