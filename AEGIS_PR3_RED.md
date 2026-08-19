@@ -1,5 +1,5 @@
-# AEGIS Organism Loop RED witness
+# AEGIS Organism Loop GREEN witness
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@a8ecfa4a8857abdcff75aab1e7ce9c3d9485f45f`.
+Candidate: `Aegis-Omega/AEGIS-OMEGA@8d6dc2fd1eb007239dff562706264ec83f54c70d`.
 
-Expected RED cause: `agents.organism` does not exist yet. The durable company-loop contract must fail for that reason before implementation.
+Required result: 11/11 durable organism-loop tests PASS plus persistent D3 operator inbox smoke PASS.
