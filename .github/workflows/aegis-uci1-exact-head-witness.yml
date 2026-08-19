@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: dd9c4cf766790fd7f05cf7e5546eb4a308e69ac9
+  CANDIDATE_SHA: 5b087d8141676edd31959b9e2d00761aff6a952f
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -59,9 +59,12 @@ jobs:
       - name: UCI-1 regression
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts
-      - name: UCI-2 and UCI-3 lease boundary
+      - name: UCI-2 lease boundary
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts
+      - name: UCI-3 provider session identity
+        working-directory: aegis/sovereign-omega-v2
+        run: npm test -- --run test/unit/collective/provider-contribution.test.ts
       - name: Typecheck
         working-directory: aegis/sovereign-omega-v2
         run: npm run typecheck
@@ -118,7 +121,7 @@ jobs:
       - name: UCI regression on resolved lock
         working-directory: aegis/sovereign-omega-v2
         run: |
-          npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts
+          npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/collective-work-schema.test.ts test/vectors/uci-1-collective-work-vectors.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-claim-lease-transaction.test.ts test/unit/collective/provider-claim-lease-schema.test.ts test/vectors/uci-2-provider-claim-vectors.test.ts test/unit/collective/provider-contribution.test.ts
           npm run typecheck
           npm run build
       - name: Hash repair evidence
