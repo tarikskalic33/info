@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 03a8fda1a92fcb86a40ef5a1ac9a5e8921ece3dc
+  CANDIDATE_SHA: e264150d3f8a7cf45c0895c0838b849a4363a2b9
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -52,10 +52,10 @@ jobs:
         working-directory: aegis/sovereign-omega-v2
         run: npm ci
 
-      - name: Prior UCI contract regression
+      - name: Prior UCI regression
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/collective/collective-work-contract.test.ts
 
-      - name: Reflexive Task 1 RED
+      - name: Reflexive corpus RED
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/reflexive-self-model/contracts.test.ts test/unit/reflexive-self-model/evaluate.test.ts
+        run: npx vitest run test/vectors/reflexive-self-model-vectors.test.ts
