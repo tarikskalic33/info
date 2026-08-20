@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 20
     env:
       SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
-      CANDIDATE_SHA: 5457427e9439d7b4c188009bdbb67f7cab2dadd9
+      CANDIDATE_SHA: 9007edc0be602ec6f6021a8f94d32091b5fb5f23
       EXPECTED_PARENT_SHA: c47e99b8139a280c39ceacc46db738b2617866d5
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git merge-base "$EXPECTED_PARENT_SHA" HEAD)" = "$EXPECTED_PARENT_SHA"
-          echo "UCI6_GREEN_EXACT_LINEAGE=PASS"
-      - name: Run focused UCI-6 falsifiers
+          echo "UCI6_PRESTATE_RED_EXACT_LINEAGE=PASS"
+      - name: Run UCI-6 falsifiers including prestate regression
         working-directory: aegis
-        run: python -m pytest sovereign-omega-v2/python/tests/test_uci6_collective_memory.py -q
+        run: python -m pytest sovereign-omega-v2/python/tests/test_uci6_collective_memory.py sovereign-omega-v2/python/tests/test_uci6_memory_prestate.py -q
