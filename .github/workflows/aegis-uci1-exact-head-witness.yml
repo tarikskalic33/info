@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: b13eb428f7eeca1261224182b459228e146ee4df
+  CANDIDATE_SHA: 1d110d4da694415c176d82a40769f7dc6a92ebfa
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -54,11 +54,11 @@ jobs:
 
       - name: Prior UCI regression
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-contribution.test.ts
+        run: npx vitest run test/unit/collective/*.test.ts test/vectors/uci-*.test.ts
 
       - name: Math verification regression
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/math-verification/math-contracts.test.ts test/unit/math-verification/math-aggregate.test.ts test/unit/math-verification/math-schema.test.ts test/vectors/math-disproval-gate-vectors.test.ts
+        run: npx vitest run test/unit/math-verification/*.test.ts test/vectors/math-disproval-gate-vectors.test.ts
 
       - name: Reflexive exact-head pass 1
         working-directory: aegis/sovereign-omega-v2
@@ -79,3 +79,41 @@ jobs:
       - name: Production build
         working-directory: aegis/sovereign-omega-v2
         run: npm run build
+
+      - name: Create content-addressed witness receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p witness-artifact
+          candidate="$(cd aegis && git rev-parse HEAD)"
+          base="$(cd aegis && git merge-base HEAD origin/main)"
+          corpus_sha="$(sha256sum aegis/test-vectors/reflexive-self-model/reflexive-self-model-v1.json | awk '{print $1}')"
+          workflow_sha="$(sha256sum .github/workflows/aegis-uci1-exact-head-witness.yml | awk '{print $1}')"
+          cat > witness-artifact/reflexive-exact-head-witness-v1.json <<EOF
+          {
+            "receipt_kind": "AEGIS_REFLEXIVE_EXACT_HEAD_WITNESS_V1",
+            "candidate_sha": "${candidate}",
+            "canonical_merge_base_sha": "${base}",
+            "reflexive_corpus_sha256": "${corpus_sha}",
+            "witness_workflow_sha256": "${workflow_sha}",
+            "prior_uci_regression": "PASS",
+            "math_verification_regression": "PASS",
+            "reflexive_pass_1": "PASS",
+            "reflexive_pass_2": "PASS",
+            "self_calibration_regression": "PASS",
+            "typecheck": "PASS",
+            "production_build": "PASS",
+            "authority": "EVIDENCE_ONLY"
+          }
+          EOF
+          sha256sum witness-artifact/reflexive-exact-head-witness-v1.json \
+            > witness-artifact/reflexive-exact-head-witness-v1.sha256
+          cat witness-artifact/reflexive-exact-head-witness-v1.sha256
+
+      - name: Upload witness artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aegis-reflexive-exact-head-${{ env.CANDIDATE_SHA }}
+          path: witness-artifact/
+          if-no-files-found: error
+          retention-days: 30
