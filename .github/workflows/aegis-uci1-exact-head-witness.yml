@@ -11,7 +11,7 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: e264150d3f8a7cf45c0895c0838b849a4363a2b9
+  CANDIDATE_SHA: b13eb428f7eeca1261224182b459228e146ee4df
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
@@ -54,8 +54,28 @@ jobs:
 
       - name: Prior UCI regression
         working-directory: aegis/sovereign-omega-v2
-        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts
+        run: npm test -- --run test/unit/collective/collective-work-contract.test.ts test/unit/collective/provider-claim-lease.test.ts test/unit/collective/provider-contribution.test.ts
 
-      - name: Reflexive corpus RED
+      - name: Math verification regression
         working-directory: aegis/sovereign-omega-v2
-        run: npx vitest run test/vectors/reflexive-self-model-vectors.test.ts
+        run: npm test -- --run test/unit/math-verification/math-contracts.test.ts test/unit/math-verification/math-aggregate.test.ts test/unit/math-verification/math-schema.test.ts test/vectors/math-disproval-gate-vectors.test.ts
+
+      - name: Reflexive exact-head pass 1
+        working-directory: aegis/sovereign-omega-v2
+        run: npx vitest run test/unit/reflexive-self-model/*.test.ts test/vectors/reflexive-self-model-vectors.test.ts
+
+      - name: Reflexive exact-head pass 2
+        working-directory: aegis/sovereign-omega-v2
+        run: npx vitest run test/unit/reflexive-self-model/*.test.ts test/vectors/reflexive-self-model-vectors.test.ts
+
+      - name: Legacy self-calibration regression
+        working-directory: aegis/sovereign-omega-v2
+        run: npx vitest run test/unit/self-calibration*.test.ts
+
+      - name: Strict typecheck
+        working-directory: aegis/sovereign-omega-v2
+        run: npm run typecheck
+
+      - name: Production build
+        working-directory: aegis/sovereign-omega-v2
+        run: npm run build
