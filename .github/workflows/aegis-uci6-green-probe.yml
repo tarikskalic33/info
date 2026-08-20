@@ -1,0 +1,43 @@
+name: AEGIS UCI-6 GREEN Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_UCI6_GREEN.md'
+
+permissions:
+  contents: read
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: 5457427e9439d7b4c188009bdbb67f7cab2dadd9
+      EXPECTED_PARENT_SHA: c47e99b8139a280c39ceacc46db738b2617866d5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact test runtime
+        run: python -m pip install pytest==8.3.5
+      - name: Verify exact stacked lineage
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git merge-base "$EXPECTED_PARENT_SHA" HEAD)" = "$EXPECTED_PARENT_SHA"
+          echo "UCI6_GREEN_EXACT_LINEAGE=PASS"
+      - name: Run focused UCI-6 falsifiers
+        working-directory: aegis
+        run: python -m pytest sovereign-omega-v2/python/tests/test_uci6_collective_memory.py -q
