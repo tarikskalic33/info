@@ -1,0 +1,10 @@
+{
+  "receipt_kind": "AEGIS_REFLEXIVE_TWO_PASS_WITNESS_V1",
+  "candidate_sha": "ebec2f9c8fa00f54605d859df61512108ff3b71d",
+  "canonical_merge_base_sha": "32b7eb6a37fb69d19dd80189390b6641c5004ef1",
+  "fresh_runner_passes": 2,
+  "unchanged_candidate": true,
+  "witness_workflow_sha256": "d040890d01d671815771bb2845b85586366966fb7196fb310ba600aab5098477",
+  "status": "PASS",
+  "authority": "EVIDENCE_ONLY"
+}
