@@ -1,0 +1,52 @@
+name: AEGIS UCI-6 RED Witness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_UCI6_RED.md'
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: 78fd533f9613ba24a34c48cf5ea0af24a87a2119
+      EXPECTED_PARENT_SHA: c47e99b8139a280c39ceacc46db738b2617866d5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact test runtime
+        run: python -m pip install pytest==8.3.5
+      - name: Verify exact stacked lineage
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git merge-base "$EXPECTED_PARENT_SHA" HEAD)" = "$EXPECTED_PARENT_SHA"
+          echo "UCI6_RED_EXACT_LINEAGE=PASS"
+      - name: Prove intended missing collective-memory module
+        working-directory: aegis
+        shell: bash
+        run: |
+          set +e
+          python -m pytest sovereign-omega-v2/python/tests/test_uci6_collective_memory.py -q > "$RUNNER_TEMP/uci6-red.log" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/uci6-red.log"
+          test "$rc" -ne 0
+          grep -q "No module named 'harness.sdk.collective_memory'" "$RUNNER_TEMP/uci6-red.log"
+          echo "UCI6_RED_INTENDED_MISSING_COLLECTIVE_MEMORY=PASS"
