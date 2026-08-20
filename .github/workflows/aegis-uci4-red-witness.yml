@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/aegis-uci4-red-witness.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_UCI4_RED.md'
 
 permissions:
   contents: read
