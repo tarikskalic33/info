@@ -1,0 +1,52 @@
+name: AEGIS UCI-5 RED Witness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_UCI5_RED.md'
+
+permissions:
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: d508861f74728b775f737b3fcfb6670d659434c4
+      EXPECTED_PARENT_SHA: 9702004a6230d6a84cc322edb48b55c14e90fe15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact test runtime
+        run: python -m pip install pytest==8.3.5
+      - name: Verify exact stacked lineage
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git merge-base "$EXPECTED_PARENT_SHA" HEAD)" = "$EXPECTED_PARENT_SHA"
+          echo "UCI5_RED_EXACT_LINEAGE=PASS"
+      - name: Prove intended missing atomic-admission module
+        working-directory: aegis
+        shell: bash
+        run: |
+          set +e
+          python -m pytest sovereign-omega-v2/python/tests/test_uci5_atomic_admission.py -q > "$RUNNER_TEMP/uci5-red.log" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/uci5-red.log"
+          test "$rc" -ne 0
+          grep -q "No module named 'harness.sdk.atomic_admission'" "$RUNNER_TEMP/uci5-red.log"
+          echo "UCI5_RED_INTENDED_MISSING_ATOMIC_ADMISSION=PASS"
