@@ -1,7 +1,7 @@
-# AEGIS UCI-6 memory-prestate GREEN trigger
+# AEGIS UCI-6 replay-precedence GREEN trigger
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@70343f4c19c9473ba5be86065c53b9ef8ba561d2`
+Candidate: `Aegis-Omega/AEGIS-OMEGA@f2821a7e31ffd9e16422a2b4766e5152de148264`
 
 Expected parent: `c47e99b8139a280c39ceacc46db738b2617866d5`
 
-Required result: the 20 prior UCI-6 behavioral falsifiers and the two preregistered memory-prestate tests all pass on this exact candidate.
+Required result: exact lineage passes and all 22 UCI-6 behavioral + memory-prestate falsifiers pass, including stable `MEMORY_PROJECTION_REPLAY` classification for exact replay and the concurrent loser.
