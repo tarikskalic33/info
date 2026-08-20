@@ -1,4 +1,4 @@
-name: AEGIS UCI-1 Exact-Head Witness
+name: AEGIS UCI Reflexive Exact-Head Witness
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
-  CANDIDATE_SHA: 622faf672845138925c16c12e2f852ae2e64147b
+  CANDIDATE_SHA: 03a8fda1a92fcb86a40ef5a1ac9a5e8921ece3dc
   EXPECTED_PARENT_SHA: 32b7eb6a37fb69d19dd80189390b6641c5004ef1
 
 jobs:
-  uci1-witness:
+  uci-reflexive-witness:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout witness repo
@@ -27,6 +27,7 @@ jobs:
           repository: ${{ env.AEGIS_REPO }}
           ref: ${{ env.CANDIDATE_SHA }}
           path: aegis
+          fetch-depth: 0
 
       - name: Bind exact candidate and parent
         shell: bash
@@ -34,7 +35,7 @@ jobs:
           set -euo pipefail
           cd aegis
           actual="$(git rev-parse HEAD)"
-          base="$(git merge-base HEAD origin/main || true)"
+          base="$(git merge-base HEAD origin/main)"
           echo "CANDIDATE_SHA=$actual"
           echo "EXPECTED_PARENT_SHA=${EXPECTED_PARENT_SHA}"
           test "$actual" = "$CANDIDATE_SHA"
@@ -51,6 +52,10 @@ jobs:
         working-directory: aegis/sovereign-omega-v2
         run: npm ci
 
-      - name: UCI-1 focused contract test
+      - name: Prior UCI contract regression
         working-directory: aegis/sovereign-omega-v2
         run: npm test -- --run test/unit/collective/collective-work-contract.test.ts
+
+      - name: Reflexive Task 1 RED
+        working-directory: aegis/sovereign-omega-v2
+        run: npm test -- --run test/unit/reflexive-self-model/contracts.test.ts test/unit/reflexive-self-model/evaluate.test.ts
