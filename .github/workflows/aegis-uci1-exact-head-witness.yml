@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   AEGIS_REPO: Aegis-Omega/AEGIS-OMEGA
@@ -16,7 +16,13 @@ env:
 
 jobs:
   uci-reflexive-witness:
+    name: exact-head witness pass ${{ matrix.attempt }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        attempt: [1, 2]
     steps:
       - name: Checkout witness repo
         uses: actions/checkout@v4
@@ -60,11 +66,7 @@ jobs:
         working-directory: aegis/sovereign-omega-v2
         run: npx vitest run test/unit/math-verification/*.test.ts test/vectors/math-disproval-gate-vectors.test.ts
 
-      - name: Reflexive exact-head pass 1
-        working-directory: aegis/sovereign-omega-v2
-        run: npx vitest run test/unit/reflexive-self-model/*.test.ts test/vectors/reflexive-self-model-vectors.test.ts
-
-      - name: Reflexive exact-head pass 2
+      - name: Reflexive exact-head regression
         working-directory: aegis/sovereign-omega-v2
         run: npx vitest run test/unit/reflexive-self-model/*.test.ts test/vectors/reflexive-self-model-vectors.test.ts
 
@@ -92,14 +94,14 @@ jobs:
           cat > witness-artifact/reflexive-exact-head-witness-v1.json <<EOF
           {
             "receipt_kind": "AEGIS_REFLEXIVE_EXACT_HEAD_WITNESS_V1",
+            "witness_attempt": ${{ matrix.attempt }},
             "candidate_sha": "${candidate}",
             "canonical_merge_base_sha": "${base}",
             "reflexive_corpus_sha256": "${corpus_sha}",
             "witness_workflow_sha256": "${workflow_sha}",
             "prior_uci_regression": "PASS",
             "math_verification_regression": "PASS",
-            "reflexive_pass_1": "PASS",
-            "reflexive_pass_2": "PASS",
+            "reflexive_regression": "PASS",
             "self_calibration_regression": "PASS",
             "typecheck": "PASS",
             "production_build": "PASS",
@@ -113,7 +115,44 @@ jobs:
       - name: Upload witness artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aegis-reflexive-exact-head-${{ env.CANDIDATE_SHA }}
+          name: aegis-reflexive-exact-head-${{ env.CANDIDATE_SHA }}-pass-${{ matrix.attempt }}
           path: witness-artifact/
           if-no-files-found: error
           retention-days: 30
+
+  record-witness:
+    name: record two-pass witness result
+    needs: uci-reflexive-witness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout witness repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Record bounded PASS manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p witness-results
+          workflow_sha="$(sha256sum .github/workflows/aegis-uci1-exact-head-witness.yml | awk '{print $1}')"
+          result="witness-results/aegis-reflexive-exact-head-${CANDIDATE_SHA}.json"
+          cat > "$result" <<EOF
+          {
+            "receipt_kind": "AEGIS_REFLEXIVE_TWO_PASS_WITNESS_V1",
+            "candidate_sha": "${CANDIDATE_SHA}",
+            "canonical_merge_base_sha": "${EXPECTED_PARENT_SHA}",
+            "fresh_runner_passes": 2,
+            "unchanged_candidate": true,
+            "witness_workflow_sha256": "${workflow_sha}",
+            "status": "PASS",
+            "authority": "EVIDENCE_ONLY"
+          }
+          EOF
+          sha256sum "$result" > "${result}.sha256"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$result" "${result}.sha256"
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(witness): record reflexive exact-head two-pass PASS"
+          git push
