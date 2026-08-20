@@ -32,6 +32,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install exact test runtime
+        run: python -m pip install pytest==8.3.5
       - name: Verify exact stacked lineage
         working-directory: aegis
         shell: bash
@@ -47,6 +49,7 @@ jobs:
           set +e
           python -m pytest sovereign-omega-v2/python/tests/test_uci4_effect_chain_integration.py -q > "$RUNNER_TEMP/uci4-red.log" 2>&1
           rc=$?
+          set -e
           cat "$RUNNER_TEMP/uci4-red.log"
           test "$rc" -ne 0
           grep -q "No module named 'harness.sdk.transition_receipts'" "$RUNNER_TEMP/uci4-red.log"
