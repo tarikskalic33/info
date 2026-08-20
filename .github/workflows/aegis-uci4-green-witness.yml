@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 15
     env:
       SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
-      CANDIDATE_SHA: 1cdd2c6331fcd2c18d75baf2c60b914dd30f4548
+      CANDIDATE_SHA: 9702004a6230d6a84cc322edb48b55c14e90fe15
       UCI_PARENT_SHA: ebec2f9c8fa00f54605d859df61512108ff3b71d
       FROZEN_SOURCE_TIP: 6407db1b0c4176f67a1d7ecbb16eca77d131d87e
     steps:
