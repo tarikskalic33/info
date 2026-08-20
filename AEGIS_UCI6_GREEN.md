@@ -1,7 +1,7 @@
-# AEGIS UCI-6 schema GREEN trigger
+# AEGIS UCI-6 internal-base RED trigger
 
-Candidate: `Aegis-Omega/AEGIS-OMEGA@afd64628cb32720f0661216d079c28d293a41b35`
+Candidate: `Aegis-Omega/AEGIS-OMEGA@46c474309254fc6909071ea4d8e79a0bbce48d47`
 
 Expected parent: `c47e99b8139a280c39ceacc46db738b2617866d5`
 
-Required result: exact lineage passes and all 24 focused UCI-6 tests pass: 20 behavioral + 2 memory-prestate + 2 closed-schema tests.
+Required result: exact lineage passes; prior 24 UCI-6 tests remain green; the new internal-base guard test fails specifically because `_collective_memory_base.LocalSqliteCollectiveMemoryStoreV1` is still directly constructible.
