@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 20
     env:
       SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
-      CANDIDATE_SHA: afd64628cb32720f0661216d079c28d293a41b35
+      CANDIDATE_SHA: 46c474309254fc6909071ea4d8e79a0bbce48d47
       EXPECTED_PARENT_SHA: c47e99b8139a280c39ceacc46db738b2617866d5
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +37,20 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git merge-base "$EXPECTED_PARENT_SHA" HEAD)" = "$EXPECTED_PARENT_SHA"
-          echo "UCI6_SCHEMA_GREEN_EXACT_LINEAGE=PASS"
-      - name: Run all focused UCI-6 falsifiers
+          echo "UCI6_INTERNAL_BASE_RED_EXACT_LINEAGE=PASS"
+      - name: Prove prior UCI-6 baseline remains green
         working-directory: aegis
         run: python -m pytest sovereign-omega-v2/python/tests/test_uci6_collective_memory.py sovereign-omega-v2/python/tests/test_uci6_memory_prestate.py sovereign-omega-v2/python/tests/test_uci6_memory_schemas.py -q
+      - name: Prove intended internal-base bypass RED
+        working-directory: aegis
+        shell: bash
+        run: |
+          set +e
+          python -m pytest sovereign-omega-v2/python/tests/test_uci6_internal_base_guard.py -q > "$RUNNER_TEMP/uci6-base-red.log" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/uci6-base-red.log"
+          test "$rc" -ne 0
+          grep -q "test_internal_base_store_direct_use_is_fail_closed" "$RUNNER_TEMP/uci6-base-red.log"
+          grep -q "DID NOT RAISE" "$RUNNER_TEMP/uci6-base-red.log"
+          echo "UCI6_INTERNAL_BASE_RED_BYPASS_REPRODUCED=PASS"
