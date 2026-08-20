@@ -1,0 +1,84 @@
+name: AEGIS UCI-4 GREEN Witness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/aegis-uci4-green-witness.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AEGIS_UCI4_GREEN.md'
+
+permissions:
+  contents: read
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      CANDIDATE_SHA: 1cdd2c6331fcd2c18d75baf2c60b914dd30f4548
+      UCI_PARENT_SHA: ebec2f9c8fa00f54605d859df61512108ff3b71d
+      FROZEN_SOURCE_TIP: 6407db1b0c4176f67a1d7ecbb16eca77d131d87e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: aegis
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install exact test runtime
+        run: python -m pip install pytest==8.3.5 jsonschema==4.23.0
+      - name: Verify exact UCI lineage
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git merge-base "$UCI_PARENT_SHA" HEAD)" = "$UCI_PARENT_SHA"
+          echo "UCI4_GREEN_EXACT_LINEAGE=PASS"
+          echo "UCI4_CANDIDATE_SHA=$CANDIDATE_SHA"
+          echo "UCI4_PARENT_SHA=$UCI_PARENT_SHA"
+          echo "FROZEN_SOURCE_TIP=$FROZEN_SOURCE_TIP"
+      - name: Validate UCI-4 schemas
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema.validators import validator_for
+          paths = [
+              Path('schemas/transition-identity-envelope.v1.schema.json'),
+              Path('schemas/decision-receipt.v1.schema.json'),
+              Path('schemas/execution-receipt.v1.schema.json'),
+              Path('schemas/effect-receipt.v1.schema.json'),
+              Path('schemas/effect-witness.v1.schema.json'),
+              Path('schemas/complete-verification-result.v1.schema.json'),
+          ]
+          for path in paths:
+              schema = json.loads(path.read_text(encoding='utf-8'))
+              validator_for(schema).check_schema(schema)
+              print(f'UCI4_SCHEMA_OK {path}')
+          PY
+      - name: Run frozen proofline plus UCI integration falsifiers
+        working-directory: aegis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest \
+            sovereign-omega-v2/python/tests/test_transition_receipts_pr1.py \
+            sovereign-omega-v2/python/tests/test_transition_receipts_cli_pr1.py \
+            sovereign-omega-v2/python/tests/test_effect_adapters_pr2.py \
+            sovereign-omega-v2/python/tests/test_effect_verifier_pr3.py \
+            sovereign-omega-v2/python/tests/test_complete_verifier_pr4.py \
+            sovereign-omega-v2/python/tests/test_complete_verifier_pr4_receipt_binding.py \
+            sovereign-omega-v2/python/tests/test_uci4_effect_chain_integration.py \
+            -q
