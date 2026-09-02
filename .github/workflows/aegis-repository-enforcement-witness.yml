@@ -1,0 +1,109 @@
+name: AEGIS Repository Enforcement External Witness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/aegis-repository-enforcement-witness.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * *'
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+  SOURCE_BRANCH: main
+  WITNESS_PATH: witness-results/aegis-repository-enforcement.json
+
+jobs:
+  witness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout independent witness repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Observe source repository enforcement
+        id: observe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p witness-results
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          import urllib.request
+          from pathlib import Path
+
+          repo = os.environ['SOURCE_REPOSITORY']
+          branch = os.environ['SOURCE_BRANCH']
+          url = f'https://api.github.com/repos/{repo}/branches/{branch}'
+          req = urllib.request.Request(
+              url,
+              headers={
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28',
+                  'User-Agent': 'aegis-independent-enforcement-witness/1',
+              },
+          )
+          with urllib.request.urlopen(req, timeout=20) as response:
+              data = json.load(response)
+
+          protected = bool(data.get('protected'))
+          protection = data.get('protection') if isinstance(data.get('protection'), dict) else {}
+          required = protection.get('required_status_checks') if isinstance(protection, dict) else {}
+          required = required if isinstance(required, dict) else {}
+          commit = data.get('commit') if isinstance(data.get('commit'), dict) else {}
+
+          witness = {
+              'schema_version': 1,
+              'witness_kind': 'AEGIS_REPOSITORY_ENFORCEMENT_EXTERNAL_OBSERVATION_V1',
+              'source_repository': repo,
+              'source_branch': branch,
+              'source_head_sha': commit.get('sha'),
+              'observed_at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'protected': protected,
+              'required_status_checks_enforcement_level': required.get('enforcement_level'),
+              'required_status_check_contexts': required.get('contexts') or [],
+              'production_admission': 'UNKNOWN_PENDING_DETAILED_POLICY' if protected else 'FORBIDDEN',
+              'authority': 'EXTERNAL_OBSERVATION_ONLY',
+              'observation_endpoint': url,
+          }
+          Path(os.environ['WITNESS_PATH']).write_text(
+              json.dumps(witness, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          Path('/tmp/aegis-enforcement-exit').write_text('0' if protected else '1')
+          print(json.dumps(witness, sort_keys=True))
+          PY
+
+      - name: Commit exact external witness
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'aegis-enforcement-witness-bot'
+          git config user.email '228550385+tarikskalic33@users.noreply.github.com'
+          git add "$WITNESS_PATH"
+          if git diff --cached --quiet; then
+            echo 'AEGIS_ENFORCEMENT_WITNESS_CHANGED=false'
+          else
+            sha="$(python3 -c 'import json,os; print(json.load(open(os.environ["WITNESS_PATH"]))["source_head_sha"])')"
+            git commit -m "witness(aegis): repository enforcement ${sha}"
+            git push origin HEAD:main
+            echo 'AEGIS_ENFORCEMENT_WITNESS_CHANGED=true'
+          fi
+
+      - name: Enforce fail-closed external observation
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(cat /tmp/aegis-enforcement-exit)"
+          if [[ "$code" != '0' ]]; then
+            echo 'AEGIS_REPOSITORY_ENFORCEMENT_EXTERNAL_WITNESS=FAIL_CLOSED' >&2
+            exit 1
+          fi
+          echo 'AEGIS_REPOSITORY_ENFORCEMENT_EXTERNAL_WITNESS=PROTECTED_BUT_DETAILED_POLICY_PENDING'
