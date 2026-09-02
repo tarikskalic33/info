@@ -1,3 +1,4 @@
+# external-witness-version: 1.0.1
 name: AEGIS Repository Enforcement External Witness
 
 on:
