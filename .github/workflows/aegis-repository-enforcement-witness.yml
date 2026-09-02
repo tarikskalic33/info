@@ -1,4 +1,5 @@
-# external-witness-version: 1.0.1
+# external-witness-version: 1.0.2
+# retrigger-target: Aegis-Omega/AEGIS-OMEGA@38f4e23ffadc8d94af8171aca2102aae443af6fa
 name: AEGIS Repository Enforcement External Witness
 
 on:
