@@ -1,0 +1,264 @@
+name: AEGIS AMIL Lock Kernel-Bound Witness
+
+on:
+  push:
+    branches:
+      - witness/amil-lock-kernel-bound-495bfd85
+    paths:
+      - '.github/workflows/aegis-amil-lock-kernel-bound.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kernel-bound-witness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_REPOSITORY: Aegis-Omega/AEGIS-OMEGA
+      SOURCE_SHA: 495bfd85d79abcb2b4f6898fe9c156488492426a
+      SOURCE_PATH: sovereign-omega-v2/formal/theories/Core/LockIrreversibility.v
+      SOURCE_GIT_BLOB: a551219d459f444b7bc1864bb260c04c18f7f250
+      COQ_IMAGE: coqorg/coq:8.20.1
+      PRIOR_RECEIPT: witness-results/AEGIS_AMIL_LOCK_REPLAY_20260915.json
+      PRIOR_RECEIPT_SHA256: a0b8e31b11f2ffce20cda8a48b0f2b412f3a090c0ed67f007815c9c76b9717d4
+
+    steps:
+      - name: Checkout witness repository
+        uses: actions/checkout@v4
+
+      - name: Verify prior AMIL/Lock replay receipt bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$PRIOR_RECEIPT"
+          actual="$(sha256sum "$PRIOR_RECEIPT" | awk '{print $1}')"
+          test "$actual" = "$PRIOR_RECEIPT_SHA256"
+          echo "PRIOR_RECEIPT_SHA256=PASS"
+
+      - name: Checkout exact AEGIS source head
+        uses: actions/checkout@v4
+        with:
+          repository: Aegis-Omega/AEGIS-OMEGA
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 1
+          path: aegis
+
+      - name: Verify exact source commit and Git blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C aegis rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git -C aegis rev-parse "$SOURCE_SHA:$SOURCE_PATH")" = "$SOURCE_GIT_BLOB"
+          test -f "aegis/$SOURCE_PATH"
+          echo "AEGIS_EXACT_HEAD=PASS"
+          echo "SOURCE_GIT_BLOB=PASS"
+
+      - name: Pull exact Coq 8.20.1 image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "$COQ_IMAGE"
+          docker run --rm --user 0:0 "$COQ_IMAGE" coqc --version | tee "$RUNNER_TEMP/coq-version.txt"
+          grep -F '8.20.1' "$RUNNER_TEMP/coq-version.txt"
+
+      - name: Compile exact LockIrreversibility source
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/amil-lock-kernel-bound"
+          mkdir -p "$out"
+          sha256sum "aegis/$SOURCE_PATH" | tee "$out/source.sha256"
+          wc -c "aegis/$SOURCE_PATH" | tee "$out/source.bytes"
+          git -C aegis rev-parse "$SOURCE_SHA:$SOURCE_PATH" | tee "$out/source.git-blob"
+          cp "$RUNNER_TEMP/coq-version.txt" "$out/coq-version.txt"
+
+          docker run --rm --user 0:0 \
+            -v "$PWD/aegis:/work" \
+            -w /work/sovereign-omega-v2/formal/theories/Core \
+            "$COQ_IMAGE" \
+            coqc LockIrreversibility.v
+
+          test -f aegis/sovereign-omega-v2/formal/theories/Core/LockIrreversibility.vo
+          sha256sum aegis/sovereign-omega-v2/formal/theories/Core/LockIrreversibility.vo | tee "$out/vo.sha256"
+          wc -c aegis/sovereign-omega-v2/formal/theories/Core/LockIrreversibility.vo | tee "$out/vo.bytes"
+
+      - name: Locate exact theorem constants
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/amil-lock-kernel-bound"
+
+          cat > "$out/assess.locate.in" <<'EOF'
+          Require Import LockIrreversibility.
+          Locate assess_is_pre_lock.
+          EOF
+          cat > "$out/propagate.locate.in" <<'EOF'
+          Require Import LockIrreversibility.
+          Locate propagate_is_post_lock.
+          EOF
+
+          docker run --rm --user 0:0 \
+            -v "$PWD/aegis:/work" -v "$out:/out" \
+            -w /work/sovereign-omega-v2/formal/theories/Core \
+            "$COQ_IMAGE" sh -lc 'coqtop -quiet < /out/assess.locate.in' \
+            > "$out/assess.locate.out" 2>&1
+
+          docker run --rm --user 0:0 \
+            -v "$PWD/aegis:/work" -v "$out:/out" \
+            -w /work/sovereign-omega-v2/formal/theories/Core \
+            "$COQ_IMAGE" sh -lc 'coqtop -quiet < /out/propagate.locate.in' \
+            > "$out/propagate.locate.out" 2>&1
+
+          assess_fq="$(grep -Eo '[A-Za-z0-9_.]*assess_is_pre_lock' "$out/assess.locate.out" | tail -n1)"
+          propagate_fq="$(grep -Eo '[A-Za-z0-9_.]*propagate_is_post_lock' "$out/propagate.locate.out" | tail -n1)"
+
+          test -n "$assess_fq"
+          test -n "$propagate_fq"
+          case "$assess_fq" in *.*) ;; *) echo 'ASSESS_NOT_FULLY_QUALIFIED' >&2; exit 1;; esac
+          case "$propagate_fq" in *.*) ;; *) echo 'PROPAGATE_NOT_FULLY_QUALIFIED' >&2; exit 1;; esac
+
+          printf '%s\n' "$assess_fq" > "$out/assess.symbol"
+          printf '%s\n' "$propagate_fq" > "$out/propagate.symbol"
+          cat "$out/assess.symbol"
+          cat "$out/propagate.symbol"
+
+      - name: Run separately bound Print Assumptions queries
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/amil-lock-kernel-bound"
+          assess_fq="$(cat "$out/assess.symbol")"
+          propagate_fq="$(cat "$out/propagate.symbol")"
+
+          printf 'Require Import LockIrreversibility.\nPrint Assumptions %s.\n' "$assess_fq" > "$out/assess.query.in"
+          printf 'Require Import LockIrreversibility.\nPrint Assumptions %s.\n' "$propagate_fq" > "$out/propagate.query.in"
+
+          if cmp -s "$out/assess.query.in" "$out/propagate.query.in"; then
+            echo 'QUERY_INPUTS_MUST_BE_DISTINCT' >&2
+            exit 1
+          fi
+
+          docker run --rm --user 0:0 \
+            -v "$PWD/aegis:/work" -v "$out:/out" \
+            -w /work/sovereign-omega-v2/formal/theories/Core \
+            "$COQ_IMAGE" sh -lc 'coqtop -quiet < /out/assess.query.in' \
+            > "$out/assess.query.out" 2>&1
+
+          docker run --rm --user 0:0 \
+            -v "$PWD/aegis:/work" -v "$out:/out" \
+            -w /work/sovereign-omega-v2/formal/theories/Core \
+            "$COQ_IMAGE" sh -lc 'coqtop -quiet < /out/propagate.query.in' \
+            > "$out/propagate.query.out" 2>&1
+
+          grep -F 'Closed under the global context' "$out/assess.query.out"
+          grep -F 'Closed under the global context' "$out/propagate.query.out"
+          echo 'LOCK_IRREVERSIBILITY_KERNEL_QUERIES=PASS'
+
+      - name: Emit exact-head kernel-bound witness
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_REPOSITORY: ${{ github.repository }}
+          RUNNER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/amil-lock-kernel-bound"
+          export OUT="$out"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          out = Path(os.environ['OUT'])
+
+          def sha256_file(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open('rb') as f:
+                  for chunk in iter(lambda: f.read(1 << 20), b''):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          source = Path('aegis') / os.environ['SOURCE_PATH']
+          vo = Path('aegis/sovereign-omega-v2/formal/theories/Core/LockIrreversibility.vo')
+          prior = Path(os.environ['PRIOR_RECEIPT'])
+
+          assess_symbol = (out / 'assess.symbol').read_text().strip()
+          propagate_symbol = (out / 'propagate.symbol').read_text().strip()
+          assess_query = (out / 'assess.query.in').read_text()
+          propagate_query = (out / 'propagate.query.in').read_text()
+          assess_output = (out / 'assess.query.out').read_text()
+          propagate_output = (out / 'propagate.query.out').read_text()
+
+          witness = {
+              'schema_version': '1.0.0',
+              'witness_kind': 'LOCK_IRREVERSIBILITY_EXACT_HEAD_KERNEL_WITNESS_V1',
+              'source_repository': os.environ['SOURCE_REPOSITORY'],
+              'source_commit_sha': os.environ['SOURCE_SHA'],
+              'source_path': os.environ['SOURCE_PATH'],
+              'source_git_blob': os.environ['SOURCE_GIT_BLOB'],
+              'source_sha256': sha256_file(source),
+              'source_bytes': source.stat().st_size,
+              'vo_path': 'sovereign-omega-v2/formal/theories/Core/LockIrreversibility.vo',
+              'vo_sha256': sha256_file(vo),
+              'vo_bytes': vo.stat().st_size,
+              'coq_image': os.environ['COQ_IMAGE'],
+              'coq_version_output': (out / 'coq-version.txt').read_text().strip(),
+              'prior_replay_receipt': os.environ['PRIOR_RECEIPT'],
+              'prior_replay_receipt_sha256': sha256_file(prior),
+              'prior_kernel_binding': 'PARTIAL_WITNESS_ONLY',
+              'queries': [
+                  {
+                      'requested_symbol': 'assess_is_pre_lock',
+                      'located_symbol': assess_symbol,
+                      'command': assess_query.strip().splitlines()[-1],
+                      'query_input_sha256': sha256_file(out / 'assess.query.in'),
+                      'query_output_sha256': sha256_file(out / 'assess.query.out'),
+                      'result': 'CLOSED_UNDER_GLOBAL_CONTEXT' if 'Closed under the global context' in assess_output else 'FAIL',
+                  },
+                  {
+                      'requested_symbol': 'propagate_is_post_lock',
+                      'located_symbol': propagate_symbol,
+                      'command': propagate_query.strip().splitlines()[-1],
+                      'query_input_sha256': sha256_file(out / 'propagate.query.in'),
+                      'query_output_sha256': sha256_file(out / 'propagate.query.out'),
+                      'result': 'CLOSED_UNDER_GLOBAL_CONTEXT' if 'Closed under the global context' in propagate_output else 'FAIL',
+                  },
+              ],
+              'transition': 'PARTIAL_WITNESS_ONLY_TO_EXACT_HEAD_KERNEL_BOUND',
+              'kernel_binding': 'EXACT_HEAD_KERNEL_BOUND',
+              'amil_input_authentication': 'NOT_ESTABLISHED',
+              'amil_activation': 'NOT_IMPLEMENTED',
+              'full_repository_regression': 'NOT_RUN',
+              'authority_effect': 'NONE',
+              'runner_repository': os.environ['RUNNER_REPOSITORY'],
+              'runner_commit_sha': os.environ['RUNNER_SHA'],
+              'github_run_id': os.environ['RUN_ID'],
+              'github_run_attempt': os.environ['RUN_ATTEMPT'],
+          }
+
+          if any(q['result'] != 'CLOSED_UNDER_GLOBAL_CONTEXT' for q in witness['queries']):
+              raise SystemExit('kernel query did not close under the global context')
+          if witness['prior_replay_receipt_sha256'] != os.environ['PRIOR_RECEIPT_SHA256']:
+              raise SystemExit('prior receipt hash mismatch')
+
+          preimage = json.dumps(witness, sort_keys=True, separators=(',', ':')).encode()
+          witness['witness_root'] = hashlib.sha256(preimage).hexdigest()
+          (out / 'LOCK_IRREVERSIBILITY_EXACT_HEAD_KERNEL_WITNESS_V1.json').write_text(
+              json.dumps(witness, indent=2, sort_keys=True) + '\n'
+          )
+          PY
+
+          (cd "$out" && sha256sum * | LC_ALL=C sort > SHA256SUMS)
+          cat "$out/LOCK_IRREVERSIBILITY_EXACT_HEAD_KERNEL_WITNESS_V1.json"
+
+      - name: Upload exact-head kernel witness
+        uses: actions/upload-artifact@v4
+        with:
+          name: lock-irreversibility-kernel-bound-${{ env.SOURCE_SHA }}
+          path: ${{ runner.temp }}/amil-lock-kernel-bound
+          if-no-files-found: error
+          retention-days: 90
