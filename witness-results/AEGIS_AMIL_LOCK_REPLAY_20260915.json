@@ -1,0 +1,51 @@
+{
+  "schema": "AEGIS_AMIL_SDK_AND_LOCK_IRREVERSIBILITY_REPLAY_V1",
+  "generated_at_utc": "2026-09-15T12:48:57.384594+00:00",
+  "amil_package": {
+    "zip_sha256": "6d043557add5d57b3ecd92b1326d0b8331648809662dac2d06ab9b7723a03b99",
+    "source_reference_head": "495bfd85d79abcb2b4f6898fe9c156488492426a",
+    "sdk_path": "harness/sdk/sovereign_execution.py",
+    "sdk_bytes": 41851,
+    "sdk_sha256": "8ce5ae92846f63d73f8506d0986658a050b75c59c16a72fd7e37bc1bccbb47e1",
+    "sdk_git_blob": "d0fb7848dc0296b2c95f92dd11265cd7efbb7e88",
+    "integration_sha256_manifest": "PASS",
+    "check_bridge_require_sdk": "PASS",
+    "cross_runtime": "PASS",
+    "vector_count": 283,
+    "decision_replays": 3,
+    "tests": {
+      "normal": "97/97 PASS",
+      "python_O": "97/97 PASS",
+      "python_OO": "97/97 PASS"
+    },
+    "mutation_replay": "8/8 DETECTED",
+    "boundary_probe": {
+      "status": "DIAGNOSTIC_COMPLETE",
+      "disposition": "BLOCKED_ON_AUTHENTICATED_INPUTS",
+      "authentication_ready": false,
+      "input_authentication": "NOT_ESTABLISHED",
+      "authority_effect": "NONE"
+    },
+    "patch_scope": [
+      "docs/superpowers/plans/2026-09-15-amil-sdk-integration.md",
+      "harness/amil_v1/SDK_INTEGRATION.md",
+      "harness/amil_v1/sdk_boundary_probe.py",
+      "harness/amil_v1/tests/test_sdk_integration.py"
+    ],
+    "full_repository_regression": "NOT_RUN",
+    "hosted_ci": "NOT_RUN",
+    "repository_mutation": "NONE_PERFORMED_IN_THIS_REPLAY",
+    "authority_effect": "NONE"
+  },
+  "lock_irreversibility": {
+    "coq_version": "8.20.1",
+    "pre_lock_output_sha256": "70f776b22d2883f324c98d1c46b793fdaa43d088c72c76588d130408162e0296",
+    "post_lock_output_sha256": "70f776b22d2883f324c98d1c46b793fdaa43d088c72c76588d130408162e0296",
+    "outputs_byte_identical": true,
+    "log_sha256": "73f7d708ddfeaa846af9ef6a9759e091a31ec9c2d32a6cf62dfb0f5bf1bf1d3a",
+    "observed_output": "Closed under the global context",
+    "interpretation": "Print-Assumptions-style output indicates no reported global-context assumptions for the queried opaque proof; uploaded transcript does not embed the exact query command, source hash, .vo hash, or repository commit binding.",
+    "kernel_binding": "PARTIAL_WITNESS_ONLY",
+    "authority_effect": "NONE"
+  }
+}
